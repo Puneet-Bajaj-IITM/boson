@@ -9,7 +9,7 @@ def get_db_connection():
         password="Ddd@1234",  # Replace with your password
         host="localhost"
     )
-    
+
 def setup_database():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1337,6 +1337,7 @@ with app:
         """
     def update_prompt_counts(filename, user_task):
         total_count, create, skipped, reviewed = get_prompt_counts(filename)
+        print(user_task)
         if user_task.lower()=='create':
             markdown_text = f"Created - {create}, Skipped - {skipped}, Total - {total_count}"
         else:
@@ -1372,7 +1373,7 @@ with app:
                 files = gr.Files(label='upload files',file_types=['.jsonl'])
 
             create_button.click(export_to_jsonl, inputs=None, outputs=output_files)
-
+            
 
             files.upload(process_jsonl_files, files)
 
@@ -1426,9 +1427,9 @@ with app:
                 inputs = [curr_username, curr_user_task, file_selection],
                 outputs = user_info_display
             )
-            btn.click(
+            tabs.change(
                 fn=update_prompt_counts,
-                inputs=[file_selection, user_task],
+                inputs=[file_selection, curr_user_task],
                 outputs=markdown_display
             )
 
