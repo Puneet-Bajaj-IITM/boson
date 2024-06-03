@@ -1,3 +1,4 @@
+
 import psycopg2
 from psycopg2 import sql
 
@@ -8,7 +9,7 @@ def get_db_connection():
         password="Ddd@1234",  # Replace with your password
         host="localhost"
     )
-
+    
 def setup_database():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1032,8 +1033,9 @@ def get_prompt_counts(filename):
       SELECT
           (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s) AS total_count,
           (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND prompts.status = 'done' AND prompts.phase = 'create') AS create_done_count,
-          (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND prompts.status = 'done' AND prompts.phase = 'review') AS create_done_count
-    """, (filename, filename, filename))
+          (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND prompts.status = 'hold' AND prompts.phase = 'review') AS skip_count,
+          (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND prompts.status = 'done' AND prompts.phase = 'review') AS review_done_count
+    """, (filename, filename, filename, filename))
     counts = cur.fetchone()
 
     cur.close()
@@ -1333,9 +1335,12 @@ with app:
         return f"""
         **User Information:** **Username:** {username} | **Task:** {task_name} | **Filename:** {filename} | **Timestamp:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         """
-    def update_prompt_counts(filename):
-        total_count, done_count, review = get_prompt_counts(filename)
-        markdown_text = f"Created - {done_count}, Reviewed - {review}, Total - {total_count}"
+    def update_prompt_counts(filename, user_task):
+        total_count, create, skipped, reviewed = get_prompt_counts(filename)
+        if user_task.lower()=='create':
+            markdown_text = f"Created - {create}, Skipped - {skipped}, Total - {total_count}"
+        else:
+            markdown_text = f"Reviewed - {reviewed}, Total - {skipped}"
         return gr.Markdown(value=markdown_text, visible=True)
 
     # Initial user information (for demonstration purposes)
@@ -1345,15 +1350,20 @@ with app:
 
     # Create Gradio components
     with gr.Row():
-        with gr.Column(scale=4):
+
+        with gr.Column(scale=9):
             user_info_display = gr.Markdown(update_user_info(initial_username, initial_task_name, initial_filename), visible=False)
-        with gr.Column(scale=2):
+        with gr.Column(scale=3):
             markdown_display = gr.Markdown(initial_filename, visible=False)
+        with gr.Column(scale=1):
+            btn_refresh = gr.Button(value="Logout")
+            btn_refresh.click(None, js="window.location.reload()")
 
     def refresh_user_info(username, task_name, filename):
         return gr.Markdown(update_user_info(username, task_name, filename), visible=True)
 
     with gr.Tabs() as tabs:
+
         with gr.Tab('Admin', visible=False, id=10) as admin:
             with gr.Row():
                 create_button = gr.Button("export Files")
@@ -1367,8 +1377,8 @@ with app:
             files.upload(process_jsonl_files, files)
 
         with gr.Tab("Login", id=0) as login_tab:
-            l_user = gr.Textbox(label="Username")
-            l_pass = gr.Textbox(label="Password", type="password")
+            l_user = gr.Textbox(label="Username", value='creator1')
+            l_pass = gr.Textbox(label="Password", value='password1', type="password")
             l_task = gr.Dropdown(label="Choose Task", choices=['Create' , 'Review'])
             l_submit = gr.Button('Submit', interactive=False)
             def validate(s1,s2,s3):
@@ -1418,7 +1428,7 @@ with app:
             )
             btn.click(
                 fn=update_prompt_counts,
-                inputs=[file_selection],
+                inputs=[file_selection, user_task],
                 outputs=markdown_display
             )
 
@@ -1443,7 +1453,7 @@ with app:
                         p_list = gr.State([])
                         n_clicks = gr.State(0)
                         score_list = gr.State([])
-                        
+
                         def append_to_p_list(l, prompt):
                             l.append(prompt)
                             return l
@@ -1454,11 +1464,10 @@ with app:
                             outputs=p_list
                         )
                         def load_p_id(p_list, n_clicks):
-                            gr.Info('This feature has not been implemented fully')
                             return p_list[-1 - n_clicks]
 
 
-                        prev_button = gr.Button('Prev', interactive=False, visible=False)
+                        prev_button = gr.Button('Prev', interactive=False)
                         prev_button.click(
                             fn=load_p_id,
                             inputs=[p_list, n_clicks],
@@ -1478,8 +1487,8 @@ with app:
                         with gr.Accordion("Skip", open=False) as acc_0:
                             skip = gr.Button('Skip', interactive=False)
                             response_skip_reason = gr.Textbox(label='Reason', interactive=True)
-                        
-                        
+
+
                         def clear_n_clicks(n_clicks):
                             return 0
 
@@ -1527,7 +1536,6 @@ with app:
                         )
                         def load_sc(score_list, n_clicks):
                             print(load_sc)
-                            gr.Info('This feature has not been implemented fully')
                             return score_list[-n_clicks]
                         prev_button.click(
                             fn=load_sc,
@@ -1555,9 +1563,8 @@ with app:
                     question_j1 = gr.Textbox(label= 'Question', value=question.value,lines=5, interactive=False)
                     response_j1 = gr.Textbox(label="Response", value=response_1.value, lines=12, interactive=False)
                     with gr.Row():
-                        clear_btn_1 = gr.Button('Prev', visible=False)
+                        clear_btn_1 = gr.Button('Prev')
                         def render_0():
-                            gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_1.click(
                             fn=render_0,
@@ -1614,10 +1621,9 @@ with app:
                 with gr.Column(scale=4):
                     question_j2 = gr.Textbox(label= 'Question',lines=5,value=question.value,  interactive=False)
                     response_j2 = gr.Textbox(label="Response", lines=12, value=response_2.value, interactive=False)
-                    with gr.Row(): 
-                        clear_btn_2 = gr.Button('Prev', visible=False)
+                    with gr.Row():
+                        clear_btn_2 = gr.Button('Prev')
                         def render_1():
-                            gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_2.click(
                             fn=render_1,
@@ -1625,12 +1631,12 @@ with app:
                             outputs=[tabs, judgement_2, judgement_1]
                         )
                         next_button_j2 = gr.Button("Next")
-                        
+
                         with gr.Accordion("Skip", open=False) as acc_2:
                             skip_button_j2 = gr.Button('Skip', interactive=False)
                             skip_reason_j2 = gr.Textbox(label = 'Reason', interactive=True)
                             skip_reason_j2.change(show, skip_reason_j2, skip_button_j2)
-                        
+
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
@@ -1664,18 +1670,17 @@ with app:
                     question_j3 = gr.Textbox(label='Question', lines=5,value=question.value,  interactive=False)
                     response_j3 = gr.Textbox(label="Response", lines=12,value=response_3.value,  interactive=False)
                     with gr.Row():
-                        clear_btn_3 = gr.Button('Prev', visible=False)
+                        clear_btn_3 = gr.Button('Prev')
                         next_button_j3 = gr.Button("Next")
                         def render_2():
-                            gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_3.click(
                             fn=render_2,
                             inputs=None,
                             outputs=[tabs, judgement_3, judgement_2]
                         )
-                        
-                        
+
+
                         with gr.Accordion("Skip", open=False) as acc_3:
                             skip_button_j3 = gr.Button('Skip', interactive=False)
                             skip_reason_j3 = gr.Textbox(label = 'Reason', interactive=True)
@@ -1715,7 +1720,7 @@ with app:
             skip.click(skip_and_next, inputs=[response_skip_reason, curr_prompt, id_1_j1, id_2_j1, id_3_j1 ,id_1_j2, id_2_j2, id_3_j2 ,id_1_j3, id_2_j3, id_3_j3 , curr_username, curr_user_task,file_selection, response_1_id, response_2_id, response_3_id], outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt])
             curr_prompt.change(
                 fn=update_prompt_counts,
-                inputs=[file_selection],
+                inputs=[file_selection, user_task],
                 outputs=markdown_display
             )
 
@@ -1791,37 +1796,4 @@ def show_table(table_name):
     print(tabulate(table_data, headers=headers, tablefmt="pretty"))
     cur.close()
     conn.close()
-
-# show_table('prompts')
-
-
-
-# show_tables()
-
-# import gradio as gr
-
-# # Create a Gradio JSON component
-# m = gr.JSON()
-
-# # Create a Gradio Button component
-# txt = gr.Textbox()
-# btn = gr.Button('n')
-
-# # Define the callback function for the button click event
-# def up():
-#     # Update the value of the JSON component
-#     m.value = {'hi': 'op'}
-
-# # Define the callback function for the JSON component onchange event
-# def k(component, value):
-#     print(value)
-
-# # Attach the callback function to the button click event
-# btn.click(up)
-
-# # Attach the callback function to the onchange event of the JSON component
-# m.onchange(k)
-
-# # Launch the Gradio app
-# gr.Interface([m, btn], None).launch()
 
