@@ -1336,22 +1336,22 @@ with app:
         **User Information:** **Username:** {username} | **Task:** {task_name} | **Filename:** {filename} |
         """
         
-def update_prompt_counts(filename, user_task, curr_usertask):
-    total_count, create, skipped, reviewed = get_prompt_counts(filename)
-    print(user_task)
-
-    # Check for None and handle accordingly
-    user_task_lower = user_task.lower() if user_task else ''
-    curr_usertask_lower = curr_usertask.lower() if curr_usertask else ''
-
-    if user_task_lower == 'create' or curr_usertask_lower == 'create':
-        markdown_text = f"Created - {create}, Skipped - {skipped}, Total - {total_count}"
-    elif user_task_lower == 'review' or curr_usertask_lower == 'review':
-        markdown_text = f"Reviewed - {reviewed}, Total - {skipped}"
-    else:
-        markdown_text = None
-
-    return gr.Markdown(value=markdown_text, visible=True)
+    def update_prompt_counts(filename, user_task, curr_usertask):
+        total_count, create, skipped, reviewed = get_prompt_counts(filename)
+        print(user_task)
+    
+        # Check for None and handle accordingly
+        user_task_lower = user_task.lower() if user_task else ''
+        curr_usertask_lower = curr_usertask.lower() if curr_usertask else ''
+    
+        if user_task_lower == 'create' or curr_usertask_lower == 'create':
+            markdown_text = f"Created - {create}, Skipped - {skipped}, Total - {total_count}"
+        elif user_task_lower == 'review' or curr_usertask_lower == 'review':
+            markdown_text = f"Reviewed - {reviewed}, Total - {skipped}"
+        else:
+            markdown_text = None
+    
+        return gr.Markdown(value=markdown_text, visible=True)
 
     # Initial user information (for demonstration purposes)
     initial_username = "JohnDoe"
