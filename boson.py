@@ -1352,9 +1352,9 @@ with app:
     # Create Gradio components
     with gr.Row():
 
-        with gr.Column(scale=15):
+        with gr.Column(scale=16):
             user_info_display = gr.Markdown(update_user_info(initial_username, initial_task_name, initial_filename), visible=False)
-        with gr.Column(scale=3):
+        with gr.Column(scale=1):
             markdown_display = gr.Markdown(initial_filename, visible=False)
         with gr.Column(scale=1):
             btn_refresh = gr.Button(value="Logout", visible=False)
