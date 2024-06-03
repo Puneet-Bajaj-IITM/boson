@@ -1458,7 +1458,7 @@ with app:
                             return p_list[-1 - n_clicks]
 
 
-                        prev_button = gr.Button('Prev', interactive=False)
+                        prev_button = gr.Button('Prev', interactive=False, visible=False)
                         prev_button.click(
                             fn=load_p_id,
                             inputs=[p_list, n_clicks],
@@ -1555,7 +1555,7 @@ with app:
                     question_j1 = gr.Textbox(label= 'Question', value=question.value,lines=5, interactive=False)
                     response_j1 = gr.Textbox(label="Response", value=response_1.value, lines=12, interactive=False)
                     with gr.Row():
-                        clear_btn_1 = gr.Button('Prev')
+                        clear_btn_1 = gr.Button('Prev', visible=False)
                         def render_0():
                             gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=True)
@@ -1615,7 +1615,7 @@ with app:
                     question_j2 = gr.Textbox(label= 'Question',lines=5,value=question.value,  interactive=False)
                     response_j2 = gr.Textbox(label="Response", lines=12, value=response_2.value, interactive=False)
                     with gr.Row(): 
-                        clear_btn_2 = gr.Button('Prev')
+                        clear_btn_2 = gr.Button('Prev', visible=False)
                         def render_1():
                             gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=True)
@@ -1664,7 +1664,7 @@ with app:
                     question_j3 = gr.Textbox(label='Question', lines=5,value=question.value,  interactive=False)
                     response_j3 = gr.Textbox(label="Response", lines=12,value=response_3.value,  interactive=False)
                     with gr.Row():
-                        clear_btn_3 = gr.Button('Prev')
+                        clear_btn_3 = gr.Button('Prev', visible=False)
                         next_button_j3 = gr.Button("Next")
                         def render_2():
                             gr.Info('This feature has not been implemented fully')
