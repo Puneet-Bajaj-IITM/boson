@@ -1357,9 +1357,9 @@ with app:
         with gr.Column(scale=3):
             markdown_display = gr.Markdown(initial_filename, visible=False)
         with gr.Column(scale=1):
-            btn_refresh = gr.Button(value="Logout")
+            btn_refresh = gr.Button(value="Logout", visible=False)
             btn_refresh.click(None, js="window.location.reload()")
-
+    
     def refresh_user_info(username, task_name, filename):
         return gr.Markdown(update_user_info(username, task_name, filename), visible=True)
 
@@ -1373,7 +1373,13 @@ with app:
                 files = gr.Files(label='upload files',file_types=['.jsonl'])
 
             create_button.click(export_to_jsonl, inputs=None, outputs=output_files)
-            
+            def show_logout(btn):
+                return gr.Button(visible=True)
+            tabs.change(
+                show_logout,
+                btn_refresh,
+                btn_refresh
+            )
 
             files.upload(process_jsonl_files, files)
 
@@ -1468,7 +1474,7 @@ with app:
                             return p_list[-1 - n_clicks]
 
 
-                        prev_button = gr.Button('Prev', interactive=False)
+                        prev_button = gr.Button('Prev', interactive=False, visible=False)
                         prev_button.click(
                             fn=load_p_id,
                             inputs=[p_list, n_clicks],
@@ -1564,7 +1570,7 @@ with app:
                     question_j1 = gr.Textbox(label= 'Question', value=question.value,lines=5, interactive=False)
                     response_j1 = gr.Textbox(label="Response", value=response_1.value, lines=12, interactive=False)
                     with gr.Row():
-                        clear_btn_1 = gr.Button('Prev')
+                        clear_btn_1 = gr.Button('Prev', visible=False)
                         def render_0():
                             return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_1.click(
@@ -1623,7 +1629,7 @@ with app:
                     question_j2 = gr.Textbox(label= 'Question',lines=5,value=question.value,  interactive=False)
                     response_j2 = gr.Textbox(label="Response", lines=12, value=response_2.value, interactive=False)
                     with gr.Row():
-                        clear_btn_2 = gr.Button('Prev')
+                        clear_btn_2 = gr.Button('Prev', visible=False)
                         def render_1():
                             return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_2.click(
@@ -1671,7 +1677,7 @@ with app:
                     question_j3 = gr.Textbox(label='Question', lines=5,value=question.value,  interactive=False)
                     response_j3 = gr.Textbox(label="Response", lines=12,value=response_3.value,  interactive=False)
                     with gr.Row():
-                        clear_btn_3 = gr.Button('Prev')
+                        clear_btn_3 = gr.Button('Prev', visible=False)
                         next_button_j3 = gr.Button("Next")
                         def render_2():
                             return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=True)
