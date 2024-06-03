@@ -1454,6 +1454,7 @@ with app:
                             outputs=p_list
                         )
                         def load_p_id(p_list, n_clicks):
+                            gr.Info('This feature has not been implemented fully')
                             return p_list[-1 - n_clicks]
 
 
@@ -1526,6 +1527,7 @@ with app:
                         )
                         def load_sc(score_list, n_clicks):
                             print(load_sc)
+                            gr.Info('This feature has not been implemented fully')
                             return score_list[-n_clicks]
                         prev_button.click(
                             fn=load_sc,
@@ -1555,6 +1557,7 @@ with app:
                     with gr.Row():
                         clear_btn_1 = gr.Button('Prev')
                         def render_0():
+                            gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_1.click(
                             fn=render_0,
@@ -1614,6 +1617,7 @@ with app:
                     with gr.Row(): 
                         clear_btn_2 = gr.Button('Prev')
                         def render_1():
+                            gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_2.click(
                             fn=render_1,
@@ -1663,6 +1667,7 @@ with app:
                         clear_btn_3 = gr.Button('Prev')
                         next_button_j3 = gr.Button("Next")
                         def render_2():
+                            gr.Info('This feature has not been implemented fully')
                             return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=True)
                         clear_btn_3.click(
                             fn=render_2,
