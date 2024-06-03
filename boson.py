@@ -1352,7 +1352,7 @@ with app:
     # Create Gradio components
     with gr.Row():
 
-        with gr.Column(scale=12):
+        with gr.Column(scale=15):
             user_info_display = gr.Markdown(update_user_info(initial_username, initial_task_name, initial_filename), visible=False)
         with gr.Column(scale=3):
             markdown_display = gr.Markdown(initial_filename, visible=False)
