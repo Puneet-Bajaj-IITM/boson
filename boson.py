@@ -1377,8 +1377,8 @@ with app:
             files.upload(process_jsonl_files, files)
 
         with gr.Tab("Login", id=0) as login_tab:
-            l_user = gr.Textbox(label="Username", value='creator1')
-            l_pass = gr.Textbox(label="Password", value='password1', type="password")
+            l_user = gr.Textbox(label="Username")
+            l_pass = gr.Textbox(label="Password", type="password")
             l_task = gr.Dropdown(label="Choose Task", choices=['Create' , 'Review'])
             l_submit = gr.Button('Submit', interactive=False)
             def validate(s1,s2,s3):
