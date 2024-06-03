@@ -1033,7 +1033,7 @@ def get_prompt_counts(filename):
       SELECT
           (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s) AS total_count,
           (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND prompts.status = 'done' AND prompts.phase = 'create') AS create_done_count,
-          (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND prompts.status = 'hold' AND prompts.phase = 'review') AS skip_count,
+          (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND (prompts.status = 'yts' OR prompts.status = 'hold') AND prompts.phase = 'review') AS skip_count,
           (SELECT COUNT(*) FROM prompts JOIN files ON prompts.file_id = files.id WHERE files.filename = %s AND prompts.status = 'done' AND prompts.phase = 'review') AS review_done_count
     """, (filename, filename, filename, filename))
     counts = cur.fetchone()
@@ -1352,14 +1352,14 @@ with app:
     # Create Gradio components
     with gr.Row():
 
-        with gr.Column(scale=16):
+        with gr.Column(scale=9):
             user_info_display = gr.Markdown(update_user_info(initial_username, initial_task_name, initial_filename), visible=False)
-        with gr.Column(scale=1):
+        with gr.Column(scale=3):
             markdown_display = gr.Markdown(initial_filename, visible=False)
         with gr.Column(scale=1):
             btn_refresh = gr.Button(value="Logout", visible=False)
             btn_refresh.click(None, js="window.location.reload()")
-    
+
     def refresh_user_info(username, task_name, filename):
         return gr.Markdown(update_user_info(username, task_name, filename), visible=True)
 
