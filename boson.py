@@ -1339,10 +1339,12 @@ with app:
     def update_prompt_counts(filename, user_task, curr_usertask):
         total_count, create, skipped, reviewed = get_prompt_counts(filename)
         print(user_task)
-        if user_task.lower()=='create' or curr_usertask =='create':
+        if user_task.lower()=='create' or curr_usertask.lower() =='create':
             markdown_text = f"Created - {create}, Skipped - {skipped}, Total - {total_count}"
-        elif user_task.lower()=='review' or curr_usertask =='review':
+        elif user_task.lower()=='review' or curr_usertask.lower() =='review':
             markdown_text = f"Reviewed - {reviewed}, Total - {skipped}"
+        else:
+            markdown_text = None
         return gr.Markdown(value=markdown_text, visible=True)
 
     # Initial user information (for demonstration purposes)
