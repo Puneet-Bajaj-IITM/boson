@@ -1336,12 +1336,12 @@ with app:
         **User Information:** **Username:** {username} | **Task:** {task_name} | **Filename:** {filename} |
         """
 
-    def update_prompt_counts(filename, user_task):
+    def update_prompt_counts(filename, user_task, curr_usertask):
         total_count, create, skipped, reviewed = get_prompt_counts(filename)
         print(user_task)
-        if user_task.lower()=='create':
+        if user_task.lower()=='create' or curr_usertask =='create':
             markdown_text = f"Created - {create}, Skipped - {skipped}, Total - {total_count}"
-        else:
+        else if user_task.lower()=='review' or curr_usertask =='review':
             markdown_text = f"Reviewed - {reviewed}, Total - {skipped}"
         return gr.Markdown(value=markdown_text, visible=True)
 
@@ -1436,7 +1436,7 @@ with app:
             )
             tabs.change(
                 fn=update_prompt_counts,
-                inputs=[file_selection, curr_user_task],
+                inputs=[file_selection, curr_user_task, user_task],
                 outputs=markdown_display
             )
 
