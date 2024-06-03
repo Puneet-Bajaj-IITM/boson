@@ -1333,7 +1333,7 @@ with app:
 
     def update_user_info(username, task_name, filename):
         return f"""
-        **User Information:** **Username:** {username} | **Task:** {task_name} | **Filename:** {filename} | **Timestamp:** {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        **User Information:** **Username:** {username} | **Task:** {task_name} | **Filename:** {filename} |}
         """
     def update_prompt_counts(filename, user_task):
         total_count, create, skipped, reviewed = get_prompt_counts(filename)
