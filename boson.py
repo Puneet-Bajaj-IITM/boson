@@ -1,4 +1,3 @@
-
 import psycopg2
 from psycopg2 import sql
 
@@ -963,7 +962,7 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
         q = load_question(username, user_task, filename)
         if q['prompt_id'] is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
-        
+
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
 
         print("Judgements updated and prompt set to review and hold successfully")
@@ -1441,20 +1440,61 @@ with app:
 
 
                     with gr.Row():
+                        p_list = gr.State([])
+                        n_clicks = gr.State(0)
+                        score_list = gr.State([])
+                        
+                        def append_to_p_list(l, prompt):
+                            l.append(prompt)
+                            return l
+
+                        curr_prompt.change(
+                            fn=append_to_p_list,
+                            inputs=[p_list, curr_prompt],
+                            outputs=p_list
+                        )
+                        def load_p_id(p_list, n_clicks):
+                            return p_list[-1 - n_clicks]
 
 
+                        prev_button = gr.Button('Prev', interactive=False)
+                        prev_button.click(
+                            fn=load_p_id,
+                            inputs=[p_list, n_clicks],
+                            outputs=[curr_prompt]
+                        )
+                        def make_in(p_list):
+                            if len(p_list) > 1:
+                                return gr.Button(interactive=True)
+                            return gr.Button(interactive=False)
+
+                        tabs.change(
+                            fn=make_in,
+                            inputs=p_list,
+                            outputs=[prev_button]
+                        )
+                        next_button = gr.Button("Next", interactive=False)
                         with gr.Accordion("Skip", open=False) as acc_0:
                             skip = gr.Button('Skip', interactive=False)
                             response_skip_reason = gr.Textbox(label='Reason', interactive=True)
-                        next_button = gr.Button("Next", interactive=False)
+                        
+                        
+                        def clear_n_clicks(n_clicks):
+                            return 0
+
+                        next_button.click(
+                            fn=clear_n_clicks,
+                            inputs=n_clicks,
+                            outputs=n_clicks
+                        )
                         def show(value):
                             if value is not None and value != '':
-                                return gr.Button(interactive=True)    
+                                return gr.Button(interactive=True)
                             return gr.Button(interactive=False)
                         response_skip_reason.change(show, response_skip_reason, skip)
                         def reset_acc():
                             return gr.Accordian(open=False), gr.Accordian(open=False), gr.Accordian(open=False), gr.Accordian(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None)
-                        
+
 
                 with gr.Column():
                     with gr.Row():
@@ -1475,8 +1515,23 @@ with app:
                         score_1.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
                         score_2.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
                         score_3.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
+                        def enter_in_l(score_list, a, b, c):
+                            score_list.append([a, b, c])
+                            return score_list
 
-
+                        next_button.click(
+                            fn=enter_in_l,
+                            inputs=[score_list, score_1, score_2, score_3],
+                            outputs=score_list
+                        )
+                        def load_sc(score_list, n_clicks):
+                            print(load_sc)
+                            return score_list[-n_clicks]
+                        prev_button.click(
+                            fn=load_sc,
+                            inputs= [score_list, n_clicks],
+                            outputs= [score_1, score_2, score_3]
+                        )
 
             # submit_button = gr.Button("Submit Scores")
             # Thankyou_md = gr.Markdown()
@@ -1498,11 +1553,31 @@ with app:
                     question_j1 = gr.Textbox(label= 'Question', value=question.value,lines=5, interactive=False)
                     response_j1 = gr.Textbox(label="Response", value=response_1.value, lines=12, interactive=False)
                     with gr.Row():
-                        next_button_j1 = gr.Button("Next")
+                        clear_btn_1 = gr.Button('Prev')
+                        def render_0():
+                            return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=True)
+                        clear_btn_1.click(
+                            fn=render_0,
+                            inputs=None,
+                            outputs=[tabs, judgement_1, subtask1]
+                        )
+                        clear_btn_1.click(
+                            fn=load_p_id,
+                            inputs=[p_list, n_clicks],
+                            outputs=[curr_prompt]
+                        )
+                        def load_score(a, b, c):
+                            return a, b, c
+                        clear_btn_1.click(
+                            fn=load_score,
+                            inputs= [score_1, score_2, score_3],
+                            outputs= [score_1, score_2, score_3]
+                        )
                         with gr.Accordion("Skip", open=False) as acc_1:
                             skip_button_j1 = gr.Button('Skip', interactive=False)
                             skip_reason_j1 = gr.Textbox(label = 'Reason', interactive=True)
                             skip_reason_j1.change(show, skip_reason_j1, skip_button_j1)
+                        next_button_j1 = gr.Button("Next")
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
@@ -1536,12 +1611,22 @@ with app:
                 with gr.Column(scale=4):
                     question_j2 = gr.Textbox(label= 'Question',lines=5,value=question.value,  interactive=False)
                     response_j2 = gr.Textbox(label="Response", lines=12, value=response_2.value, interactive=False)
-                    with gr.Row():
+                    with gr.Row(): 
+                        clear_btn_2 = gr.Button('Prev')
+                        def render_1():
+                            return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=True)
+                        clear_btn_2.click(
+                            fn=render_1,
+                            inputs=None,
+                            outputs=[tabs, judgement_2, judgement_1]
+                        )
                         next_button_j2 = gr.Button("Next")
+                        
                         with gr.Accordion("Skip", open=False) as acc_2:
                             skip_button_j2 = gr.Button('Skip', interactive=False)
                             skip_reason_j2 = gr.Textbox(label = 'Reason', interactive=True)
                             skip_reason_j2.change(show, skip_reason_j2, skip_button_j2)
+                        
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
@@ -1575,12 +1660,22 @@ with app:
                     question_j3 = gr.Textbox(label='Question', lines=5,value=question.value,  interactive=False)
                     response_j3 = gr.Textbox(label="Response", lines=12,value=response_3.value,  interactive=False)
                     with gr.Row():
+                        clear_btn_3 = gr.Button('Prev')
                         next_button_j3 = gr.Button("Next")
+                        def render_2():
+                            return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=True)
+                        clear_btn_3.click(
+                            fn=render_2,
+                            inputs=None,
+                            outputs=[tabs, judgement_3, judgement_2]
+                        )
+                        
+                        
                         with gr.Accordion("Skip", open=False) as acc_3:
                             skip_button_j3 = gr.Button('Skip', interactive=False)
                             skip_reason_j3 = gr.Textbox(label = 'Reason', interactive=True)
                             skip_reason_j3.change(show, skip_reason_j3, skip_button_j3)
-                            
+
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
@@ -1625,13 +1720,13 @@ with app:
                 inputs=[curr_prompt, curr_username, curr_user_task,file_selection,id_1_j1, id_2_j1, id_3_j1 ,id_1_j2, id_2_j2, id_3_j2 ,id_1_j3, id_2_j3, id_3_j3,score_1_j1, score_2_j1, score_3_j1, reason_1_j1, reason_2_j1, reason_3_j1],
                 outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3,curr_prompt]
             )
-            
+
             skip_button_j1.click(
                 skip_and_next_j1,
                 inputs=[skip_reason_j1, curr_username, curr_user_task,file_selection,curr_prompt, id_1_j1, id_2_j1, id_3_j1 ,id_1_j2, id_2_j2, id_3_j2 ,id_1_j3, id_2_j3, id_3_j3 , score_1_j1, score_2_j1, score_3_j1, reason_1_j1, reason_2_j1, reason_3_j1],
                 outputs=[tabs,login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt]
             )
-       
+
 
 
             # Do same for judgement 2 and 3 and then submit
@@ -1640,13 +1735,13 @@ with app:
                 inputs=[curr_prompt, curr_username, curr_user_task,file_selection,id_1_j2, id_2_j2, id_3_j2 ,id_1_j3, id_2_j3, id_3_j3 ,score_1_j2, score_2_j2, score_3_j2, reason_1_j2, reason_2_j2, reason_3_j2],
                 outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt]
             )
-    
+
             skip_button_j2.click(
                 skip_and_next_j2,
                 inputs=[skip_reason_j2,curr_username, curr_user_task,file_selection,curr_prompt, id_1_j2, id_2_j2, id_3_j2 ,id_1_j3, id_2_j3, id_3_j3 ,score_1_j2, score_2_j2, score_3_j2, reason_1_j2, reason_2_j2, reason_3_j2],
                 outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt]
             )
-    
+
 
             next_button_j3.click(
                 save_and_next_j3,
@@ -1659,14 +1754,14 @@ with app:
                 inputs=[skip_reason_j3,curr_username, curr_user_task,file_selection,curr_prompt, id_1_j3, id_2_j3, id_3_j3 ,score_1_j3, score_2_j3, score_3_j3, reason_1_j3, reason_2_j3, reason_3_j3],
                 outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt]
             )
-              
-            def reset_acc():               
+
+            def reset_acc():
                 return gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None)
-                        
+
 
             curr_prompt.change(
-                fn = reset_acc, 
-                inputs=None, 
+                fn = reset_acc,
+                inputs=None,
                 outputs = [acc_0, acc_1, acc_2, acc_3, skip, skip_button_j1, skip_button_j2, skip_button_j3, response_skip_reason,skip_reason_j1, skip_reason_j2, skip_reason_j3]
               )
 
