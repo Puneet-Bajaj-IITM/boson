@@ -1341,7 +1341,7 @@ with app:
         print(user_task)
         if user_task.lower()=='create' or curr_usertask =='create':
             markdown_text = f"Created - {create}, Skipped - {skipped}, Total - {total_count}"
-        else if user_task.lower()=='review' or curr_usertask =='review':
+        elif user_task.lower()=='review' or curr_usertask =='review':
             markdown_text = f"Reviewed - {reviewed}, Total - {skipped}"
         return gr.Markdown(value=markdown_text, visible=True)
 
