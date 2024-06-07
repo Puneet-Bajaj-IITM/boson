@@ -361,27 +361,37 @@ BEGIN
 
     -- Fetch a prompt with status 'yts' and the specified phase (create or review) and assign it to the create_user
     IF p_user_task = 'create' THEN
-        UPDATE prompts
-        SET create_user = p_create_user, status = 'wip', create_start_time = NOW()
-        WHERE id = (
-            SELECT id
+        SELECT id INTO v_prompt_id
             FROM prompts
-            WHERE status = 'yts' AND phase = 'create' AND file_id = v_file_id
+            WHERE status = 'wip' AND phase = 'create' AND file_id = v_file_id  AND create_user = p_create_user
             LIMIT 1
-            FOR UPDATE SKIP LOCKED
-        )
-        RETURNING id INTO v_prompt_id;
+        IF v_prompt_id IS NULL THEN
+            UPDATE prompts
+            SET create_user = p_create_user, status = 'wip', create_start_time = NOW()
+            WHERE id = (
+                SELECT id
+                FROM prompts
+                WHERE status = 'yts' AND phase = 'create' AND file_id = v_file_id
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id INTO v_prompt_id;
     ELSIF p_user_task = 'review' THEN
-        UPDATE prompts
-        SET review_user = p_create_user, status = 'wip', review_start_time = NOW()
-        WHERE id = (
-            SELECT id
-            FROM prompts
-            WHERE status = 'yts' AND phase = 'review' AND file_id = v_file_id
-            LIMIT 1
-            FOR UPDATE SKIP LOCKED
-        )
-        RETURNING id INTO v_prompt_id;
+        SELECT id INTO v_prompt_id
+                FROM prompts
+                WHERE status = 'wip' AND phase = 'review' AND file_id = v_file_id  AND create_user = p_create_user
+                LIMIT 1
+        IF v_prompt_id IS NULL THEN
+            UPDATE prompts
+            SET review_user = p_create_user, status = 'wip', review_start_time = NOW()
+            WHERE id = (
+                SELECT id
+                FROM prompts
+                WHERE status = 'yts' AND phase = 'review' AND file_id = v_file_id
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            )
+            RETURNING id INTO v_prompt_id;
     END IF;
 
     -- Check if any row was updated
