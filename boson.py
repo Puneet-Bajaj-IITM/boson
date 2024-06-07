@@ -373,6 +373,7 @@ BEGIN
                 FROM prompts
                 WHERE status = 'yts' AND phase = 'create' AND file_id = v_file_id
                 LIMIT 1
+                ORDER BY id ASC
                 FOR UPDATE SKIP LOCKED
             )
             RETURNING id INTO v_prompt_id;
@@ -388,6 +389,7 @@ BEGIN
                 SELECT id
                 FROM prompts
                 WHERE status = 'yts' AND phase = 'review' AND file_id = v_file_id
+                ORDER BY id ASC
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             )
