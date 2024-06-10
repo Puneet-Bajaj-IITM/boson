@@ -1342,8 +1342,11 @@ def get_files(username, user_task):
         conn.close()
 
 
-app = gr.Blocks(title='Boson - Task 1')
-with app:
+css = """
+.skip {background-color: #FFCCCB}
+"""
+
+with gr.Blocks(title='Boson - Task 1', css=css) as app:
     username = gr.State(value="")
     curr_username = gr.Textbox(username, visible=False)
     prompt = gr.State(value = {})
@@ -1614,7 +1617,7 @@ with app:
             with gr.Row(equal_height=True):
                 with gr.Column(scale=0.35):
                     question = gr.Textbox(label="Question",autoscroll=False,max_lines=20, lines=20, interactive=False)
-                    res_skip = gr.Markdown(visible=True)
+                    res_skip = gr.Markdown(visible=False, elem_classes="skip")
 
                     with gr.Row():
                         n_clicks = gr.State(0)
@@ -1673,7 +1676,7 @@ with app:
                 with gr.Column(scale=4):
                     question_j1 = gr.Textbox(label= 'Question',autoscroll=False, value=question.value,max_lines=5,lines=5, interactive=False)
                     response_j1 = gr.Textbox(label="Response",autoscroll=False, value=response_1.value, max_lines=8,lines=8 ,interactive=False)
-                    res_skip_j1 = gr.Markdown(visible=True)
+                    res_skip_j1 = gr.Markdown(visible=False, elem_classes="skip")
                     with gr.Row():
                         clear_btn_1 = gr.Button('Prev', visible=True)
                         def render_0():
@@ -1716,7 +1719,7 @@ with app:
                 with gr.Column(scale=4):
                     question_j2 = gr.Textbox(label= 'Question',max_lines=5,lines=5,value=question.value,autoscroll=False,  interactive=False)
                     response_j2 = gr.Textbox(label="Response", value=response_2.value,autoscroll=False, max_lines=8, lines=8, interactive=False)
-                    res_skip_j2 = gr.Markdown(visible=True)
+                    res_skip_j2 = gr.Markdown(visible=False, elem_classes="skip")
                     with gr.Row():
                         clear_btn_2 = gr.Button('Prev', visible=True)
                         def render_1():
@@ -1758,7 +1761,7 @@ with app:
                 with gr.Column(scale=4):
                     question_j3 = gr.Textbox(label='Question',autoscroll=False, max_lines=5,lines=5,value=question.value,  interactive=False)
                     response_j3 = gr.Textbox(label="Response",autoscroll=False,value=response_3.value, max_lines=8,lines=8, interactive=False)
-                    res_skip_j3 = gr.Markdown(visible=True)
+                    res_skip_j3 = gr.Markdown(visible=False, elem_classes="skip")
                     with gr.Row():
                         clear_btn_3 = gr.Button('Prev', visible=True)
                         next_button_j3 = gr.Button("Next")
