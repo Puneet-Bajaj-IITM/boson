@@ -37,7 +37,7 @@ def setup_database():
             END LOOP;
         END $$;
     """)
-    
+
     # Create users table
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
@@ -348,7 +348,7 @@ BEGIN
         FROM prompts
         WHERE status = 'wip' AND phase = 'create' AND file_id = v_file_id AND create_user = p_create_user
         LIMIT 1;
-        
+
         IF v_prompt_id IS NULL THEN
             UPDATE prompts
             SET create_user = p_create_user, status = 'wip', create_start_time = NOW()
@@ -367,7 +367,7 @@ BEGIN
         FROM prompts
         WHERE status = 'wip' AND phase = 'review' AND file_id = v_file_id AND create_user = p_create_user
         LIMIT 1;
-        
+
         IF v_prompt_id IS NULL THEN
             UPDATE prompts
             SET review_user = p_create_user, status = 'wip', review_start_time = NOW()
@@ -675,7 +675,7 @@ create_stored_procedure_sql4 = """
 CREATE OR REPLACE FUNCTION update_judgements_and_prompt(
     id_1 INTEGER, id_2 INTEGER,
     score_1 INTEGER, score_2 INTEGER,
-    reason_1 TEXT, reason_2 TEXT, 
+    reason_1 TEXT, reason_2 TEXT,
     prompt_id INTEGER)
 RETURNS VOID AS $$
 BEGIN
@@ -697,6 +697,7 @@ $$ LANGUAGE plpgsql;
 """
 
 create_stored_procedure(create_stored_procedure_sql4)
+
 
 
 
@@ -843,6 +844,10 @@ def save_and_next_j1(curr_prompt, username, user_task, filename, id_1_j1, id_2_j
         # Close the cursor and connection
         cur.close()
         conn.close()
+        curr_prompt["judgement_1_1_score"] = score_1_j1
+        curr_prompt["judgement_1_1_reason"] = reason_1_j1
+        curr_prompt["judgement_1_2_score"] = score_2_j1
+        curr_prompt["judgement_1_2_reason"] = reason_2_j1
 
         print("Judgements updated successfully")
         if get_judgement_data(id_1_j2) or get_judgement_data(id_2_j2) :
@@ -878,9 +883,14 @@ def skip_and_next_j1(skip_reason, username, user_task, filename ,curr_prompt,id_
         conn.commit()
         cur.close()
         conn.close()
-
+        curr_prompt["judgement_1_1_score"] = score_1_j1
+        curr_prompt["judgement_1_1_reason"] = reason_1_j1
+        curr_prompt["judgement_1_2_score"] = score_2_j1
+        curr_prompt["judgement_1_2_reason"] = reason_2_j1
+        curr_prompt[f"{user_task}_skip_reason"] = skip_reason
+        curr_prompt[f"{user_task}_skip_cat"] = skip_cat
         print("Judgements updated and prompt set to review and hold successfully")
-       
+
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task)
@@ -907,7 +917,10 @@ def save_and_next_j2(curr_prompt, username, user_task, filename, id_1_j2, id_2_j
         # Close the cursor and connection
         cur.close()
         conn.close()
-
+        curr_prompt["judgement_2_1_score"] = score_1_j2
+        curr_prompt["judgement_2_1_reason"] = reason_1_j2
+        curr_prompt["judgement_2_2_score"] = score_2_j2
+        curr_prompt["judgement_2_2_reason"] = reason_2_j2
         print("Judgements updated successfully")
         if get_judgement_data(id_1_j3) or get_judgement_data(id_2_j3) :
             return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=True), curr_prompt
@@ -940,7 +953,12 @@ def skip_and_next_j2(skip_reason , username, user_task, filename, curr_prompt,id
         conn.commit()
         cur.close()
         conn.close()
-      
+        curr_prompt["judgement_2_1_score"] = score_1_j2
+        curr_prompt["judgement_2_1_reason"] = reason_1_j2
+        curr_prompt["judgement_2_2_score"] = score_2_j2
+        curr_prompt["judgement_2_2_reason"] = reason_2_j2
+        curr_prompt[f"{user_task}_skip_reason"] = skip_reason
+        curr_prompt[f"{user_task}_skip_cat"] = skip_cat
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task)
@@ -966,15 +984,18 @@ def save_and_next_j3(username, user_task, filename, curr_prompt, id_1_j3, id_2_j
         # Close the cursor and connection
         cur.close()
         conn.close()
-
+        curr_prompt["judgement_3_1_score"] = score_1_j3
+        curr_prompt["judgement_3_1_reason"] = reason_1_j3
+        curr_prompt["judgement_3_2_score"] = score_2_j3
+        curr_prompt["judgement_3_2_reason"] = reason_2_j3
         print(curr_prompt)
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task)
         q = load_question(username, user_task, filename)
         if q is None:
-            return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
-        return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
+            return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
+        return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
 
     except Exception as e:
         print(f"Error updating judgements: {e}")
@@ -996,15 +1017,21 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
         conn.commit()
         cur.close()
         conn.close()
+        curr_prompt["judgement_3_1_score"] = score_1_j3
+        curr_prompt["judgement_3_1_reason"] = reason_1_j3
+        curr_prompt["judgement_3_2_score"] = score_2_j3
+        curr_prompt["judgement_3_2_reason"] = reason_2_j3
+        curr_prompt[f"{user_task}_skip_reason"] = skip_reason
+        curr_prompt[f"{user_task}_skip_cat"] = skip_cat
         print(curr_prompt)
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task)
         q = load_question(username, user_task, filename)
         if q is None:
-            return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
+            return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
 
-        return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
+        return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
 
         print("Judgements updated and prompt set to review and hold successfully")
 
@@ -1038,7 +1065,7 @@ def get_prompt_counts(filename):
     cur.close()
     conn.close()
 
-    return total_count, create_done, create_skipped, create_WIP, create_YTS, review_done, review_skipped, review_WIP, review_YTS 
+    return total_count, create_done, create_skipped, create_WIP, create_YTS, review_done, review_skipped, review_WIP, review_YTS
 
 import psycopg2
 import json
@@ -1201,32 +1228,36 @@ import gradio as gr
 import json
 
 # Save scores and reasons for the current question and move to the next question
-def save_and_next(curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 , username, user_task,filename, score_1, score_2, score_3, response_1_id, response_2_id, response_3_id):
+def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 , username, user_task,filename, score_1, score_2, score_3, response_1_id, response_2_id, response_3_id):
     print(type(curr_prompt))
     print(username, user_task,filename, score_1, score_2, score_3, response_1_id, response_2_id, response_3_id)
     update_response_scores(score_1, score_2, score_3, response_1_id, response_2_id, response_3_id)
-
+    if n_clicks != 0:
+        n_clicks -= 1
+    curr_prompt["score_1"] = score_1
+    curr_prompt["score_2"] = score_2
+    curr_prompt["score_3"] = score_3
     if not(score_1 and score_2 and score_3):
         raise gr.Error('Please fill scores for all fields')
     if get_judgement_data(id_1_j1) or get_judgement_data(id_2_j1) :
-        return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False) ,curr_prompt
+        return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False) ,curr_prompt, n_clicks
     if get_judgement_data(id_1_j2) or get_judgement_data(id_2_j2) :
-        return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), curr_prompt
+        return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), curr_prompt, n_clicks
     if get_judgement_data(id_1_j3) or get_judgement_data(id_2_j3) :
-        return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True),curr_prompt
+        return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True),curr_prompt, n_clicks
     print(curr_prompt)
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
     update_prompt_status_in_db(prompt_id, user_task)
     q = load_question(username, user_task, filename)
     if q is None:
-        return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
-    return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
+        return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
+    return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
 
 
 
 # Skip the current question and move to the next question
-def skip_and_next(skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 ,username, user_task,filename, response_1_id, response_2_id, response_3_id, skip_cat):
+def skip_and_next(n_clicks, skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 ,username, user_task,filename, response_1_id, response_2_id, response_3_id, skip_cat):
     print(username, user_task, response_1_id, response_2_id, response_3_id)
     update_response_scores(-1, -1, -1, response_1_id, response_2_id, response_3_id)
     conn = get_db_connection()
@@ -1238,14 +1269,22 @@ def skip_and_next(skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,
     conn.commit()
     cur.close()
     conn.close()
+    curr_prompt["score_1"] = 0
+    curr_prompt["score_2"] = 0
+    curr_prompt["score_3"] = 0
+    curr_prompt[f"{user_task}_skip_reason"] = skip_reason
+    curr_prompt[f"{user_task}_skip_cat"] = skip_cat
+    if n_clicks != 0:
+        n_clicks -= 1
+
     print(curr_prompt)
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
     update_prompt_status_in_db(prompt_id, user_task)
     q = load_question(username, user_task, filename)
     if q is None:
-        return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
-    return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
+        return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
+    return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
 
 
 # Save scores and reasons for the current question and submit
@@ -1317,24 +1356,24 @@ with app:
         return f"""
         **User Information:** **Username:** {username}, **Task:** {task_name}, **Filename:** {filename}
         """
-        
+
     def update_prompt_counts(filename, user_task, curr_usertask):
         total_count, create_done, create_skipped, create_WIP, create_YTS, review_done, review_skipped, review_WIP, review_YTS = get_prompt_counts(filename)
-        print(user_task)
+   
         # Check for None and handle accordingly
         user_task_lower = user_task.lower() if user_task else ''
         curr_usertask_lower = curr_usertask.lower() if curr_usertask else ''
         task = user_task_lower if user_task_lower else curr_usertask_lower
-    
+
         if task is not None:
             if task == 'create':
-                done, skipped, WIP, YTS = create_done, create_skipped, create_WIP, create_YTS
+                done, skipped, WIP, YTS = create_done + review_done, create_skipped, create_WIP , create_YTS
             else:
-                done, skipped, WIP, YTS = review_done, review_skipped, review_WIP, review_YTS
+                done, skipped, WIP, YTS = review_done + create_done, review_skipped, review_WIP , review_YTS
             markdown_text = f"Total Records: {total_count}, Completed: {done}, Skipped: {skipped}, WIP: {WIP}, YTS: {YTS} "
         else:
             markdown_text = None
-    
+
         return gr.Markdown(value=markdown_text, visible=True)
 
     # Initial user information (for demonstration purposes)
@@ -1343,11 +1382,11 @@ with app:
     initial_filename = "sample_file.jsonl"
     create_skip_reason = gr.Textbox(label='Reason', value=None, interactive=True, visible=False)
     review_skip_reason = gr.Textbox(label='Reason', value=None, interactive=True, visible=False)
-    create_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data'], visible=False)
-    review_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data'], visible=False)
+    create_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], visible=False)
+    review_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], visible=False)
 
     # Create Gradio components
-    with gr.Row():
+    with gr.Row(equal_height=True):
 
         with gr.Column(scale=4):
             user_info_display = gr.Markdown(update_user_info(initial_username, initial_task_name, initial_filename), visible=False)
@@ -1363,7 +1402,7 @@ with app:
     with gr.Tabs() as tabs:
 
         with gr.Tab('Admin', visible=False, id=10) as admin:
-            with gr.Row():
+            with gr.Row(equal_height=True):
                 with gr.Accordion(" Add New User or Change Credentials", open=False):
                   with gr.Row():
                     with gr.Column(scale=1):
@@ -1378,40 +1417,40 @@ with app:
                             upd_btn = gr.Button("Update Credentials")
                     with gr.Column(scale=1):
                         x = gr.Markdown(' ')
-                    
+
                     def add_user(username, password, role):
                         conn = get_db_connection()
                         cur = conn.cursor()
-                        
+
                         # Check if the user already exists
                         cur.execute("SELECT * FROM users WHERE username = %s", (username,))
                         existing_user = cur.fetchone()
-                        
+
                         if existing_user:
                             conn.close()
                             raise gr.Error('User already exists.')
                             return None
-        
+
                         # Add the new user if the user does not exist
                         cur.execute("INSERT INTO users (username, password, user_role) VALUES (%s, %s, %s)", (username, password, role))
                         conn.commit()
                         conn.close()
                         return gr.Info('New User Added Successfully !!')
-                    
+
 
                     def upd_user(username, new_password, new_role):
                         conn = get_db_connection()
                         cur = conn.cursor()
-                        
+
                         # Check if the user exists
                         cur.execute("SELECT * FROM users WHERE username = %s", (username,))
                         existing_user = cur.fetchone()
-                        
+
                         if not existing_user:
                             conn.close()
                             raise gr.Error('User does not exist.')
                             return None
-                        
+
                         # Update the user's credentials if the user exists
                         cur.execute("UPDATE users SET password = %s, user_role = %s WHERE username = %s", (new_password, new_role, username))
                         conn.commit()
@@ -1450,32 +1489,31 @@ with app:
             def reset_password(username, old_password, new_password):
                 conn = get_db_connection()
                 cur = conn.cursor()
-                    
+
                 # Check if the user exists
                 cur.execute("SELECT password FROM users WHERE username = %s", (username,))
                 existing_user = cur.fetchone()
-                    
+
                 if not existing_user:
                     conn.close()
                     raise gr.Error('User does not exist.')
                     return None
-                
+
                 # Check if the old password is correct
                 stored_password = existing_user[0]
-                print(stored_password)
                 if stored_password != old_password:
                     conn.close()
                     raise gr.Error('Old password is incorrect.')
                     return None
-                    
+
                 # Update the password if the old password is correct
                 cur.execute("UPDATE users SET password = %s WHERE username = %s", (new_password, username))
                 conn.commit()
                 conn.close()
                 return gr.Info('Password reset successfully.')
-                
-                
-            with gr.Row():
+
+
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=1):
                     x = gr.Markdown('')
 
@@ -1493,7 +1531,7 @@ with app:
                     l_pass = gr.Textbox(label="Password", type="password")
                     l_task = gr.Dropdown(label="Choose Task", choices=['Create' , 'Review'])
                     l_submit = gr.Button('Submit', interactive=False)
-                    
+
                     reset_btn.click(
                         fn=reset_password,
                         inputs=[reset_username, old_password, new_password],
@@ -1524,21 +1562,21 @@ with app:
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
                 files = get_files(username, user_task.lower())
-                print(files)
+            
                 if (files != []) and (files is not None):
                     files = [file.split('/')[-1] for file in files]
                     return  gr.Dropdown( choices=files, interactive=True)
                 return gr.Dropdown( choices=['No files available'])
         def load_question_first(username, curr_user_task, file_selection):
-            print('Changing tab')
+    
             q = load_question(username, curr_user_task, file_selection)
-            print(q)
+          
             return gr.Tabs(selected=2), q
         with gr.Tab("Selection", id=1) as selection_tab:
-          with gr.Row():
+          with gr.Row(equal_height=True):
             with gr.Column(scale=1):
               x = gr.Markdown(' ')
-            with gr.Column(scale=2):           
+            with gr.Column(scale=2):
               file_selection = gr.Dropdown(label="Choose File", choices=['No files availabale'])
               btn = gr.Button('Submit')
             with gr.Column(scale=1):
@@ -1575,43 +1613,17 @@ with app:
            
             with gr.Row(equal_height=True):
                 with gr.Column(scale=0.35):
-                    question = gr.Textbox(label="Question", lines=22,autoscroll=False, interactive=False)
-                    res_skip = gr.Markdown(visible=False)
+                    question = gr.Textbox(label="Question",autoscroll=False,max_lines=20, lines=20, interactive=False)
+                    res_skip = gr.Markdown(visible=True)
 
                     with gr.Row():
-                        p_list = gr.State([])
                         n_clicks = gr.State(0)
                         score_list = gr.State([])
 
-                        def append_to_p_list(l, prompt):
-                            l.append(prompt)
-                            return l
-
-                        curr_prompt.change(
-                            fn=append_to_p_list,
-                            inputs=[p_list, curr_prompt],
-                            outputs=p_list
-                        )
-                        def load_p_id(p_list, n_clicks):
-                            return p_list[-1 - n_clicks]
-
 
                         prev_button = gr.Button('Prev', interactive=False, visible=True)
-                        # prev_button.click(
-                        #     fn=load_p_id,
-                        #     inputs=[p_list, n_clicks],
-                        #     outputs=[curr_prompt]
-                        # )
-                        def make_in(p_list):
-                            if len(p_list) > 1:
-                                return gr.Button(interactive=True)
-                            return gr.Button(interactive=False)
-
-                        tabs.change(
-                            fn=make_in,
-                            inputs=p_list,
-                            outputs=[prev_button]
-                        )
+                
+              
                         next_button = gr.Button("Next", interactive=False)
                         with gr.Accordion("Skip", open=False) as acc_0:
                             skip = gr.Button('Skip', interactive=False)
@@ -1629,12 +1641,12 @@ with app:
 
                 with gr.Column():
                     with gr.Row():
-                        response_1_id = gr.Textbox(label="Response 1 ID",autoscroll=False, lines=11, interactive=False, visible=False)
-                        response_2_id = gr.Textbox(label="Response 2 ID",autoscroll=False, lines=11, interactive=False, visible=False)
-                        response_3_id = gr.Textbox(label="Response 3 ID",autoscroll=False, lines=11, interactive=False, visible=False)
-                        response_1 = gr.Textbox(label="Response 1",autoscroll=False, lines=21, interactive=False)
-                        response_2 = gr.Textbox(label="Response 2",autoscroll=False, lines=21, interactive=False)
-                        response_3 = gr.Textbox(label="Response 3",autoscroll=False, lines=21, interactive=False)
+                        response_1_id = gr.Textbox(label="Response 1 ID",autoscroll=False, max_lines=11, lines=11, interactive=False, visible=False)
+                        response_2_id = gr.Textbox(label="Response 2 ID",autoscroll=False, max_lines=11, lines=11,interactive=False, visible=False)
+                        response_3_id = gr.Textbox(label="Response 3 ID",autoscroll=False, max_lines=11, lines=11, interactive=False, visible=False)
+                        response_1 = gr.Textbox(label="Response 1",autoscroll=False, max_lines=20, lines=20, interactive=False)
+                        response_2 = gr.Textbox(label="Response 2",autoscroll=False, max_lines=20,lines=20, interactive=False)
+                        response_3 = gr.Textbox(label="Response 3",autoscroll=False, max_lines=20,lines=20, interactive=False)
 
                     with gr.Row():
                         score_1 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5])
@@ -1647,23 +1659,9 @@ with app:
                         score_2.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
                         score_3.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
                         
-                        def load_sc(score_list, n_clicks_j1):
-                            print('Loading sc')
-                            print(n_clicks_j1+1)
-                            print(score_list)
-                            return score_list[-n_clicks_j1] + [n_clicks_j1+1]
-                        
-
-            # submit_button = gr.Button("Submit Scores")
-            # Thankyou_md = gr.Markdown()
-            # output_md = gr.Markdown()
-            # output_json = gr.JSON()
+                       
         curr_username.change(change_tab, [gr.Textbox(value=1,autoscroll=False, visible=False)], outputs=[tabs, login_tab, selection_tab, subtask1])
-        # curr_prompt.change(change_tab, [gr.Textbox(value=2, visible=False)], outputs=[tabs, login_tab, selection_tab, subtask1])
-
-
-    # submit_button.click(submit_scores, inputs=[score_1, score_2, score_3, history, current_question_index], outputs=[output_md, Thankyou_md, output_json, curr_hist])
-
+     
 
         with gr.Tab("SubTask2", id=3, visible=False) as judgement_1:
             
@@ -1671,11 +1669,11 @@ with app:
             gr.Markdown("## Subtask 2: Judgement Correction")
             n_clicks_j1 = gr.State(0)
             j1_list = gr.State([])
-            with gr.Row():
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=4):
-                    question_j1 = gr.Textbox(label= 'Question',autoscroll=False, value=question.value,lines=5, interactive=False)
-                    response_j1 = gr.Textbox(label="Response",autoscroll=False, value=response_1.value, lines=12, interactive=False)
-                    res_skip_j1 = gr.Markdown(visible=False)
+                    question_j1 = gr.Textbox(label= 'Question',autoscroll=False, value=question.value,max_lines=5,lines=5, interactive=False)
+                    response_j1 = gr.Textbox(label="Response",autoscroll=False, value=response_1.value, max_lines=8,lines=8 ,interactive=False)
+                    res_skip_j1 = gr.Markdown(visible=True)
                     with gr.Row():
                         clear_btn_1 = gr.Button('Prev', visible=True)
                         def render_0():
@@ -1685,11 +1683,7 @@ with app:
                             inputs=None,
                             outputs=[tabs, judgement_1, subtask1]
                         )
-                        clear_btn_1.click(
-                            fn=load_sc,
-                            inputs= [score_list, n_clicks_j1],
-                            outputs= [score_1, score_2, score_3, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason,  n_clicks_j1]
-                        )
+          
                         next_button_j1 = gr.Button("Next")
                         with gr.Accordion("Skip", open=False) as acc_1:
                             skip_button_j1 = gr.Button('Skip', interactive=False)
@@ -1700,23 +1694,17 @@ with app:
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
-                            id_1_j1 = gr.Textbox(label="ID 1",autoscroll=False, lines=2, visible=False)
-                            rubric_1_j1 = gr.Textbox(label="Rubric 1",autoscroll=False, lines=1, interactive=False)
+                            id_1_j1 = gr.Textbox(label="ID 1",autoscroll=False, max_lines=2,lines=2, visible=False)
+                            rubric_1_j1 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False)
                             score_1_j1 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5])
-                            reason_1_j1 = gr.Textbox(label="Reason 1", autoscroll=False, lines=14)
+                            reason_1_j1 = gr.Textbox(label="Reason 1", autoscroll=False, max_lines=13, lines=13)
                         with gr.Column():
-                            id_2_j1 = gr.Textbox(label="ID 2",autoscroll=False, lines=2, visible=False)
-                            rubric_2_j1 = gr.Textbox(label="Rubric 2",autoscroll=False, lines=1, interactive=False)
+                            id_2_j1 = gr.Textbox(label="ID 2",autoscroll=False, max_lines=2, lines=2, visible=False)
+                            rubric_2_j1 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1,interactive=False)
                             score_2_j1 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5])
-                            reason_2_j1 = gr.Textbox(label="Reason 2",autoscroll=False, lines=14)
+                            reason_2_j1 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13)
                         
-                  
-
-                # with gr.Row():
-                #     submit_button_j1 = gr.Button("Submit")
-                # Thanks_j1 = gr.Markdown()
-                # output_md_j1 = gr.Markdown()
-                # output_json_j1 = gr.JSON()
+                
 
 
         with gr.Tab("SubTask2", id=4, visible=False) as judgement_2:
@@ -1724,11 +1712,11 @@ with app:
             gr.Markdown("## Subtask 2: Judgement Correction")
             n_clicks_j2 = gr.State(0)
             j2_list = gr.State([])
-            with gr.Row():
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=4):
-                    question_j2 = gr.Textbox(label= 'Question',lines=5,value=question.value,autoscroll=False,  interactive=False)
-                    response_j2 = gr.Textbox(label="Response", lines=12, value=response_2.value,autoscroll=False, interactive=False)
-                    res_skip_j2 = gr.Markdown(visible=False)
+                    question_j2 = gr.Textbox(label= 'Question',max_lines=5,lines=5,value=question.value,autoscroll=False,  interactive=False)
+                    response_j2 = gr.Textbox(label="Response", value=response_2.value,autoscroll=False, max_lines=8, lines=8, interactive=False)
+                    res_skip_j2 = gr.Markdown(visible=True)
                     with gr.Row():
                         clear_btn_2 = gr.Button('Prev', visible=True)
                         def render_1():
@@ -1749,40 +1737,28 @@ with app:
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
-                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,lines=2, visible=False)
-                            rubric_1_j2 = gr.Textbox(label="Rubric 1",autoscroll=False, lines=1, interactive=False)
+                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False)
+                            rubric_1_j2 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False)
                             score_1_j2 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5])
-                            reason_1_j2 = gr.Textbox(label="Reason 1",autoscroll=False, lines=14)
+                            reason_1_j2 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13)
                         with gr.Column():
-                            id_2_j2 = gr.Textbox(label="ID 2", lines=2,autoscroll=False, visible=False)
-                            rubric_2_j2 = gr.Textbox(label="Rubric 2",autoscroll=False, lines=1, interactive=False)
+                            id_2_j2 = gr.Textbox(label="ID 2", max_lines=2, lines=2,autoscroll=False, visible=False)
+                            rubric_2_j2 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1, interactive=False)
                             score_2_j2 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5])
-                            reason_2_j2 = gr.Textbox(label="Reason 2",autoscroll=False, lines=14)
-                        def load_j1(j1_list, n_clicks_j2):
-                            print('Loading J1')
-                            print(n_clicks_j2+1)
-                            print(j1_list)
-                            return [n_clicks_j2+1] + j1_list[-n_clicks_j2]
-                        
-                        
-
-                # with gr.Row():
-                #     submit_button_j1 = gr.Button("Submit")
-            # Thanks_j2 = gr.Markdown()
-            # output_md_j2 = gr.Markdown()
-            # output_json_j2 = gr.JSON()
+                            reason_2_j2 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13)
+        
 
 
-        with gr.Tab("SubTask2", id=5, visible=True) as judgement_3:
+        with gr.Tab("SubTask2", id=5, visible=False) as judgement_3:
             judgements_3 = gr.State(value=curr_prompt.value)
             gr.Markdown("## Subtask 2: Judgement Correction")
             n_clicks_j3 = gr.State(0)
             j3_list = gr.State([])
-            with gr.Row():
+            with gr.Row(equal_height=True):
                 with gr.Column(scale=4):
-                    question_j3 = gr.Textbox(label='Question',autoscroll=False, lines=5,value=question.value,  interactive=False)
-                    response_j3 = gr.Textbox(label="Response",autoscroll=False, lines=12,value=response_3.value,  interactive=False)
-                    res_skip_j3 = gr.Markdown(visible=False)
+                    question_j3 = gr.Textbox(label='Question',autoscroll=False, max_lines=5,lines=5,value=question.value,  interactive=False)
+                    response_j3 = gr.Textbox(label="Response",autoscroll=False,value=response_3.value, max_lines=8,lines=8, interactive=False)
+                    res_skip_j3 = gr.Markdown(visible=True)
                     with gr.Row():
                         clear_btn_3 = gr.Button('Prev', visible=True)
                         next_button_j3 = gr.Button("Next")
@@ -1807,21 +1783,73 @@ with app:
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
-                            id_1_j3 = gr.Textbox(label="ID 1", lines=2,autoscroll=False, visible=False)
-                            rubric_1_j3 = gr.Textbox(label="Rubric 1",autoscroll=False, lines=1, interactive=False)
+                            id_1_j3 = gr.Textbox(label="ID 1", max_lines=2, lines=2,autoscroll=False, visible=False)
+                            rubric_1_j3 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False)
                             score_1_j3 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5])
-                            reason_1_j3 = gr.Textbox(label="Reason 1",autoscroll=False, lines=14)
+                            reason_1_j3 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13)
                         with gr.Column():
-                            id_2_j3 = gr.Textbox(label="ID 2", lines=2,autoscroll=False, visible=False)
-                            rubric_2_j3 = gr.Textbox(label="Rubric 2",autoscroll=False, lines=1, interactive=False)
+                            id_2_j3 = gr.Textbox(label="ID 2", max_lines=2, lines=2, autoscroll=False, visible=False)
+                            rubric_2_j3 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1, lines=1, interactive=False)
                             score_2_j3 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5])
-                            reason_2_j3 = gr.Textbox(label="Reason 2",autoscroll=False, lines=14)
+                            reason_2_j3 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13)
                         def sync_values(question, response_1, response_2, response_3):
                             return question, question, question, response_1, response_2, response_3
             
+
+                        def reset_acc():
+                            return gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None)
+
+
+                        curr_prompt.change(
+                            fn = reset_acc,
+                            inputs=None,
+                            outputs = [acc_0, acc_1, acc_2, acc_3, skip, skip_button_j1, skip_button_j2, skip_button_j3, response_skip_reason,skip_reason_j1, skip_reason_j2, skip_reason_j3]
+                          )
+
+                        def render_3():
+                            return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=True)
+          
+
+                        def show_btn_j3(n_clicks, j3_list):
+                            if n_clicks+1 < len(j3_list):
+                                return gr.Button(interactive=True, visible=True)
+                            return gr.Button(interactive=False, visible=False)
+                        prompts_list = gr.State([])
+                        tabs.change(
+                            fn=show_btn_j3,
+                            inputs=[n_clicks, prompts_list],
+                            outputs=prev_button
+                        )
+                        
+                        def add_to_p_list(curr_prompt, prompts_list):
+                            for i in range(len(prompts_list)):
+                                if prompts_list[i]['prompt_id'] == curr_prompt['prompt_id']:
+                                    prompts_list[i] = curr_prompt
+                                    return prompts_list
+                            prompts_list.append(curr_prompt)
+                            return prompts_list
+                            
+                        curr_prompt.change(add_to_p_list, inputs=[curr_prompt, prompts_list], outputs=prompts_list)
+                        def load_prev_prompt(prompts_list, n_clicks):
+                            try:
+                                p = prompts_list[-n_clicks-1]
+                            except:
+                                p = prompts_list[-n_clicks]
+                                gr.Warning('No more prompts in history to go back !!')
+                            
+                            n_clicks += 1
+                            print(n_clicks)
+                            print(len(prompts_list))
+                            return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=True), p, n_clicks
+                        prev_button.click(
+                            fn=load_prev_prompt,
+                            inputs=[prompts_list, n_clicks],
+                            outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt, n_clicks]
+                        )
+                        curr_prompt.change(load_scoring_quest, inputs=[curr_username, curr_prompt], outputs=[tabs, curr_username, prompt_id, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, score_1, score_2, score_3, id_1_j1, id_2_j1 ,score_1_j1, score_2_j1, reason_1_j1, reason_2_j1, rubric_1_j1, rubric_2_j1, id_1_j2, id_2_j2,score_1_j2, score_2_j2, reason_1_j2, reason_2_j2, rubric_1_j2, rubric_2_j2, id_1_j3, id_2_j3 ,score_1_j3, score_2_j3, reason_1_j3, reason_2_j3, rubric_1_j3, rubric_2_j3, score_1, score_2, score_3 , create_skip_reason, review_skip_reason, skip_cat, review_skip_cat])
                         question.change(sync_values , inputs=[question, response_1, response_2, response_3], outputs=[question_j1, question_j2, question_j3, response_j1, response_j2, response_j3])
-                        next_button.click(save_and_next, inputs=[curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 ,curr_username, curr_user_task, file_selection ,score_1, score_2, score_3, response_1_id, response_2_id, response_3_id], outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt])
-                        skip.click(skip_and_next, inputs=[response_skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 , curr_username, curr_user_task,file_selection, response_1_id, response_2_id, response_3_id, skip_cat], outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt])
+                        next_button.click(save_and_next, inputs=[n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 ,curr_username, curr_user_task, file_selection ,score_1, score_2, score_3, response_1_id, response_2_id, response_3_id], outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt, n_clicks])
+                        skip.click(skip_and_next, inputs=[n_clicks, response_skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 , curr_username, curr_user_task,file_selection, response_1_id, response_2_id, response_3_id, skip_cat], outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt, n_clicks])
                         curr_prompt.change(
                             fn=update_prompt_counts,
                             inputs=[file_selection, curr_user_task, user_task],
@@ -1852,91 +1880,24 @@ with app:
                             inputs=[skip_reason_j2,curr_username, curr_user_task,file_selection,curr_prompt, id_1_j2, id_2_j2,id_1_j3, id_2_j3 ,score_1_j2, score_2_j2, reason_1_j2, reason_2_j2, skip_cat_j2],
                             outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt]
                         )
+                        prev_prompt= gr.State({})
 
 
                         next_button_j3.click(
                             save_and_next_j3,
                             inputs=[curr_username, curr_user_task,file_selection,curr_prompt,id_1_j3, id_2_j3 ,score_1_j3, score_2_j3, reason_1_j3, reason_2_j3],
-                            outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt]
+                            outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt, prev_prompt]
+                        )
+                        prev_prompt.change(
+                            fn= add_to_p_list,
+                            inputs=[prev_prompt, prompts_list],
+                            outputs=prompts_list
                         )
 
                         skip_button_j3.click(
                             skip_and_next_j3,
                             inputs=[skip_reason_j3,curr_username, curr_user_task,file_selection,curr_prompt, id_1_j3, id_2_j3 ,score_1_j3, score_2_j3,reason_1_j3, reason_2_j3, skip_cat_j3],
-                            outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt]
-                        )
-
-                        def reset_acc():
-                            return gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None)
-
-
-                        curr_prompt.change(
-                            fn = reset_acc,
-                            inputs=None,
-                            outputs = [acc_0, acc_1, acc_2, acc_3, skip, skip_button_j1, skip_button_j2, skip_button_j3, response_skip_reason,skip_reason_j1, skip_reason_j2, skip_reason_j3]
-                          )
-
-                        def enter_in_l(n_clicks_j1, score_list, score_1, score_2, score_3, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason):
-                            if n_clicks_j1 == 0:
-                                score_list.append([score_1, score_2, score_3, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason])
-                            else:
-                                score_list[-n_clicks_j1] = [score_1, score_2, score_3, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason]
-                                n_clicks_j1 -= 1
-                            print(score_list, n_clicks_j1)
-                            return score_list, n_clicks_j1
-                            
-
-                        next_button.click(
-                            fn=enter_in_l,
-                            inputs=[n_clicks_j1, score_list, score_1, score_2, score_3, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason],
-                            outputs=[score_list, n_clicks_j1]
-                        )
-                        def enter_in_j1(n_clicks_j2, j1_list, a, b, c, d, e, f, g, h, question_j1, response_j1, res_skip_j1, skip_cat_j1, skip_reason_j1):
-                            if n_clicks_j2 == 0:
-                                j1_list.append([a, b, c, d, e, f, g, h, question_j1, response_j1, res_skip_j1, skip_cat_j1, skip_reason_j1])
-                            else:
-                                j1_list[-n_clicks_j2] = [a, b, c, d, e, f, g, h, question_j1, response_j1, res_skip_j1, skip_cat_j1, skip_reason_j1]
-                                n_clicks_j2 -= 1
-                            print(j1_list, n_clicks_j2)
-                            return j1_list, n_clicks_j2
-                        next_button_j1.click(
-                            fn=enter_in_j1,
-                            inputs=[n_clicks_j2,j1_list, id_1_j1, rubric_1_j1,score_1_j1, reason_1_j1,id_2_j1, rubric_2_j1 , score_2_j1, reason_2_j1, question_j1, response_j1, res_skip_j1, skip_cat_j1, skip_reason_j1],
-                            outputs=[j1_list, n_clicks_j2]
-                        )
-
-                        clear_btn_2.click(
-                            fn=load_j1,
-                            inputs=[j1_list, n_clicks_j2],
-                            outputs=[n_clicks_j2, id_1_j1, rubric_1_j1,score_1_j1, reason_1_j1,id_2_j1, rubric_2_j1 , score_2_j1, reason_2_j1, question_j1, response_j1, res_skip_j1, skip_cat_j1, skip_reason_j1 ]
-                        )
-
-                        def enter_in_j2(n_clicks_j3, j2_list, a, b, c, d, e, f, g, h,question_j2, response_j2, res_skip_j2, skip_cat_j2, skip_reason_j2):
-                            if n_clicks_j3 == 0:
-                                j2_list.append([a, b, c, d, e, f, g, h, question_j2, response_j2, res_skip_j2, skip_cat_j2, skip_reason_j2])
-                            else:
-                                j2_list[-n_clicks_j3] = [a, b, c, d, e, f, g, h, question_j2, response_j2, res_skip_j2, skip_cat_j2, skip_reason_j2]
-                                n_clicks_j3 -= 1
-                            print(j2_list, n_clicks_j3)
-                            return j2_list, n_clicks_j3
-                        next_button_j2.click(
-                            fn=enter_in_j2,
-                            inputs=[n_clicks_j3,j2_list, id_1_j2, rubric_1_j2,score_1_j2, reason_1_j2,id_2_j2, rubric_2_j2 , score_2_j2, reason_2_j2, question_j2, response_j2, res_skip_j2, skip_cat_j2, skip_reason_j2],
-                            outputs=[j2_list, n_clicks_j3]
-                        )
-
-                        def enter_in_j3(n_clicks,j3_list, id_1_j3, rubric_1_j3,score_1_j3, reason_1_j3,id_2_j3, rubric_2_j3, score_2_j3, reason_2_j3 , question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason):
-                            if n_clicks == 0:
-                                j3_list.append([id_1_j3, rubric_1_j3,score_1_j3, reason_1_j3,id_2_j3, rubric_2_j3, score_2_j3, reason_2_j3 , question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason])
-                            else:
-                                j3_list[-n_clicks] = [id_1_j3, rubric_1_j3,score_1_j3, reason_1_j3,id_2_j3, rubric_2_j3, score_2_j3, reason_2_j3 , question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason]
-                                n_clicks -= 1
-                            print(j3_list, n_clicks)
-                            return j3_list, n_clicks
-                        next_button_j3.click(
-                            fn=enter_in_j3,
-                            inputs=[n_clicks,j3_list, id_1_j3, rubric_1_j3,score_1_j3, reason_1_j3,id_2_j3, rubric_2_j3, score_2_j3, reason_2_j3 , question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason],
-                            outputs=[j3_list, n_clicks]
+                            outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt, prev_prompt]
                         )
                         def show_reason(r1, r2, c1, c2,  curr_user_task):
                             if curr_user_task.lower() == 'review':                               
@@ -1945,67 +1906,7 @@ with app:
                             return gr.Markdown(visible=False), gr.Markdown(visible=False), gr.Markdown(visible=False), gr.Markdown(visible=False)
                         curr_prompt.change(load_scoring_quest, inputs=[curr_username, curr_prompt], outputs=[tabs, curr_username, prompt_id, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, score_1, score_2, score_3, id_1_j1, id_2_j1 ,score_1_j1, score_2_j1, reason_1_j1, reason_2_j1, rubric_1_j1, rubric_2_j1, id_1_j2, id_2_j2,score_1_j2, score_2_j2, reason_1_j2, reason_2_j2, rubric_1_j2, rubric_2_j2, id_1_j3, id_2_j3 ,score_1_j3, score_2_j3, reason_1_j3, reason_2_j3, rubric_1_j3, rubric_2_j3, score_1, score_2, score_3 , create_skip_reason, review_skip_reason, skip_cat, review_skip_cat])
                         create_skip_reason.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
-                        
-                        def load_j2(j2_list, n_clicks_j3):
-                            print('Loading J2')
-                            print(n_clicks_j3+1)
-                            print(j2_list)
-                            return [n_clicks_j3+1] + j2_list[-n_clicks_j3]
-                        clear_btn_3.click(
-                            fn=load_j2,
-                            inputs=[j2_list, n_clicks_j3],
-                            outputs=[n_clicks_j3, id_1_j2, rubric_1_j2,score_1_j2, reason_1_j2,id_2_j2, rubric_2_j2 , score_2_j2, reason_2_j2 , question_j2, response_j2, res_skip_j2, skip_cat_j2, skip_reason_j2]
-                        )
-                        def render_3():
-                            return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=True)
-                        prev_button.click(
-                            fn=render_3,
-                            inputs=None,
-                            outputs=[tabs, subtask1, judgement_3]
-
-                        )
-                        def show_btn_j3(n_clicks, j3_list):
-                            print('n clicks' , n_clicks)
-                            if n_clicks > 1:
-                                return gr.Button(interactive=True)
-                            print('making it non interactive')
-                            return gr.Button(interactive=False)
-
-                        tabs.change(
-                            fn=show_btn_j3,
-                            inputs=[n_clicks, j3_list],
-                            outputs=prev_button
-                        )
-                        
-                        def load_j3(j3_list, n_clicks):
-                            try:
-                                print('Loading J3')
-                                print(n_clicks+1)
-                                print(j3_list)
-                                return [n_clicks+1] +  j3_list[-n_clicks]
-                            except:
-                                raise gr.Error('No more records in history!!, Please reload to continue')
-                                
-
-                        prev_button.click(
-                            fn=load_j3,
-                            inputs=[j3_list, n_clicks],
-                            outputs=[n_clicks, id_1_j3, rubric_1_j3,score_1_j3, reason_1_j3,id_2_j3, rubric_2_j3, score_2_j3, reason_2_j3 , question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, skip_cat, response_skip_reason]
-                        )
-                        
-                # with gr.Row():
-                #     submit_button_j1 = gr.Button("Submit")
-            # Thanks_j3 = gr.Markdown()
-            # output_md_j3 = gr.Markdown()
-            # output_json_j3 = gr.JSON()
-
-   
-
-            # submit_button.click(
-            #     save_and_submit,
-            #     inputs=[question, response, rubric, score_1, score_2, reason_1, reason_2, judgements, current_question_index],
-            #     outputs=[Thanks, output_md, output_json, curr_hist]
-            # )
+      
 
 gr.close_all()
 app.launch(debug=True, server_name='0.0.0.0')
