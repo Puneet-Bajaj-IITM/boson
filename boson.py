@@ -1630,7 +1630,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         next_button = gr.Button("Next", interactive=False)
                         with gr.Accordion("Skip", open=False) as acc_0:
                             skip = gr.Button('Skip', interactive=False)
-                            skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data'], value= review_skip_cat.value or create_skip_cat.value  )
+                            skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value  )
                             response_skip_reason = gr.Textbox(label='Reason', value =  review_skip_reason.value or create_skip_reason.value ,autoscroll=False, interactive=True)
 
                         def show(value):
@@ -1690,7 +1690,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         next_button_j1 = gr.Button("Next")
                         with gr.Accordion("Skip", open=False) as acc_1:
                             skip_button_j1 = gr.Button('Skip', interactive=False)
-                            skip_cat_j1 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data'], value= review_skip_cat.value or create_skip_cat.value)
+                            skip_cat_j1 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value)
                             skip_reason_j1 = gr.Textbox(label = 'Reason',autoscroll=False, value =  review_skip_reason.value or  create_skip_reason.value , interactive=True)
                             skip_cat_j1.change(show, skip_cat_j1, skip_button_j1)
                         
@@ -1733,7 +1733,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         with gr.Accordion("Skip", open=False) as acc_2:
                             skip_button_j2 = gr.Button('Skip', interactive=False)
-                            skip_cat_j2 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data'], value= review_skip_cat.value or create_skip_cat.value)
+                            skip_cat_j2 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value)
                             skip_reason_j2 = gr.Textbox(label = 'Reason' ,value =  review_skip_reason.value or create_skip_reason.value , autoscroll=False, interactive=True)
                             skip_cat_j2.change(show, skip_cat_j2, skip_button_j2)
 
@@ -1779,7 +1779,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         with gr.Accordion("Skip", open=False) as acc_3:
                             skip_button_j3 = gr.Button('Skip', interactive=False)
-                            skip_cat_j3 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data'], value= review_skip_cat.value or create_skip_cat.value)
+                            skip_cat_j3 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value)
                             skip_reason_j3 = gr.Textbox(label = 'Reason', value =  review_skip_reason.value or create_skip_reason.value ,autoscroll=False, interactive=True)
                             skip_cat_j3.change(show, skip_cat_j3, skip_button_j3)
 
