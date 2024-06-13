@@ -471,13 +471,8 @@ DECLARE
     response_id INT;
     prompt_data JSONB;
     response_text TEXT;
-    judgement_data JSONB;
     judgement JSONB;
-    rubric_count JSONB;
-    rubric TEXT;
-    rubric1 TEXT;
-    rubric2 TEXT;
-    judgement_count INT;
+    rubric_count INT := 0;
 BEGIN
     -- Check if filename already exists
     PERFORM 1 FROM files WHERE files.filename = p_filename;
@@ -488,89 +483,57 @@ BEGIN
     -- Insert into files table
     INSERT INTO files (filename) VALUES (p_filename) RETURNING id INTO file_id;
 
-    -- Loop through prompts in the data
-    FOR prompt_data IN SELECT * FROM jsonb_array_elements(p_data)
+    -- Loop through each object in the array
+    FOR i IN 0 .. jsonb_array_length(p_data) - 1
     LOOP
+        prompt_data := p_data->i;
+
         -- Insert into prompts table with truncated values
         INSERT INTO prompts (prompt_text, domain, task, meta_data, phase, status, file_id)
         VALUES (
-            prompt_data->>'prompt',
-            LEFT(prompt_data->'meta'->>'prompt_domain', 100),
-            LEFT(prompt_data->'meta'->>'prompt_task', 100),
-            prompt_data->'meta'::TEXT,
+            LEFT(prompt_data->>'prompt', 100),
+            LEFT((prompt_data->'meta'->>'prompt_domain')::TEXT, 100),
+            LEFT((prompt_data->'meta'->>'prompt_task')::TEXT, 100),
+            prompt_data->'meta',
             'create',
             'yts',
             file_id
         )
         RETURNING id INTO prompt_id;
 
-        -- Loop through responses in the prompt data
-        FOR response_text IN SELECT jsonb_array_elements_text(prompt_data->'responses')
+        -- Loop through responses and judgements for each object
+        FOR j IN 0 .. jsonb_array_length(prompt_data->'responses') - 1
         LOOP
+            response_text := (prompt_data->'responses'->>j)::TEXT;
+
             -- Insert into responses table
             INSERT INTO responses (prompt_id, response_text) VALUES (prompt_id, response_text) RETURNING id INTO response_id;
 
-            -- Initialize rubric count tracking
-            rubric_count := '{}'::JSONB;
-
-            -- Loop through per_response_judgements in the prompt data
-            FOR judgement_data IN SELECT * FROM jsonb_array_elements(prompt_data->'per_response_judgements')
+            -- Loop through judgements for each response
+            FOR k IN 0 .. jsonb_array_length(prompt_data->'per_response_judgements'->j) - 1
             LOOP
-                -- Reset judgement count and rubrics for each response
-                judgement_count := 0;
-                rubric1 := NULL;
-                rubric2 := NULL;
+                judgement := (prompt_data->'per_response_judgements'->j->k);
 
-                FOR judgement IN SELECT * FROM jsonb_array_elements(judgement_data)
-                LOOP
-                    -- Get the rubric for the current judgement
-                    rubric := judgement->>'rubric';
-
-                    -- Check if we already have two rubrics recorded
-                    IF rubric1 IS NULL THEN
-                        rubric1 := rubric;
-                    ELSIF rubric2 IS NULL AND rubric != rubric1 THEN
-                        rubric2 := rubric;
-                    END IF;
-
-                    -- If the rubric is not one of the first two recorded, skip this judgement
-                    IF rubric != rubric1 AND rubric != rubric2 THEN
-                        CONTINUE;
-                    END IF;
-
-                    -- Track the count of judgements for the current rubric
-                    rubric_count := rubric_count || jsonb_build_object(rubric, COALESCE(rubric_count->>rubric, '0')::INT + 1);
-
-                    -- If we already have two judgements for the current rubric, skip this judgement
-                    IF (rubric_count->>rubric)::INT > 2 THEN
-                        CONTINUE;
-                    END IF;
-
-                    -- Insert into judgements table with type casting for the score
+                -- Check if the rubric count for this response exceeds 2
+                IF rubric_count < 2 AND k < 2 THEN
+                    -- Insert into judgements table
                     INSERT INTO judgements (response_id, reason, rubric, score)
                     VALUES (
                         response_id,
                         judgement->>'reason',
-                        rubric,
+                        judgement->>'rubric',
                         (judgement->>'score')::INTEGER
                     );
-
-                    -- Increment the judgement count
-                    judgement_count := judgement_count + 1;
-
-                    -- If we already have two judgements for the response, exit the loop
-                    IF judgement_count >= 2 THEN
-                        EXIT;
-                    END IF;
-                END LOOP;
-            END LOOP;
-        END LOOP;
-    END LOOP;
+                    rubric_count := rubric_count + 1;  -- Increment rubric count
+                END IF;
+            END LOOP; -- end of judgements loop
+            rubric_count := 0;  -- Reset rubric count for the next response
+        END LOOP; -- end of responses loop
+    END LOOP; -- end of prompts loop
 
     RETURN 'Data from ' || p_filename || ' inserted successfully.';
 END;
 $$ LANGUAGE plpgsql;
-
 
 """
 
