@@ -1876,6 +1876,6 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
       
 
 gr.close_all()
-app.launch(debug=True, server_name='0.0.0.0')
+app.launch(debug=True, server_name='0.0.0.0', share-True)
 
 
