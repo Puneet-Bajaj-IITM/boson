@@ -473,6 +473,9 @@ DECLARE
     response_text TEXT;
     judgement JSONB;
     rubric_count INT := 0;
+    prompt_length INT;
+    responses_length INT;
+    judgements_length INT;
 BEGIN
     -- Check if filename already exists
     PERFORM 1 FROM files WHERE files.filename = p_filename;
@@ -483,8 +486,11 @@ BEGIN
     -- Insert into files table
     INSERT INTO files (filename) VALUES (p_filename) RETURNING id INTO file_id;
 
+    -- Get the length of the prompts array
+    prompt_length := COALESCE(jsonb_array_length(p_data), 0);
+
     -- Loop through each object in the array
-    FOR i IN 0 .. jsonb_array_length(p_data) - 1
+    FOR i IN 0 .. prompt_length - 1
     LOOP
         prompt_data := p_data->i;
 
@@ -501,16 +507,22 @@ BEGIN
         )
         RETURNING id INTO prompt_id;
 
+        -- Get the length of the responses array
+        responses_length := COALESCE(jsonb_array_length(prompt_data->'responses'), 0);
+
         -- Loop through responses and judgements for each object
-        FOR j IN 0 .. jsonb_array_length(prompt_data->'responses') - 1
+        FOR j IN 0 .. responses_length - 1
         LOOP
             response_text := (prompt_data->'responses'->>j)::TEXT;
 
             -- Insert into responses table
             INSERT INTO responses (prompt_id, response_text) VALUES (prompt_id, response_text) RETURNING id INTO response_id;
 
+            -- Get the length of the judgements array
+            judgements_length := COALESCE(jsonb_array_length(prompt_data->'per_response_judgements'->j), 0);
+
             -- Loop through judgements for each response
-            FOR k IN 0 .. jsonb_array_length(prompt_data->'per_response_judgements'->j) - 1
+            FOR k IN 0 .. judgements_length - 1
             LOOP
                 judgement := (prompt_data->'per_response_judgements'->j->k);
 
@@ -1877,5 +1889,3 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
 gr.close_all()
 app.launch(debug=True, server_name='0.0.0.0', share=True)
-
-
