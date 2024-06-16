@@ -5,7 +5,7 @@ from psycopg2 import sql
 def get_db_connection():
     return psycopg2.connect(
         dbname="boson",
-        user="puneet",
+        user="ubuntu",
         password="Ddd@1234",  # Replace with your password
         host="localhost"
     )
