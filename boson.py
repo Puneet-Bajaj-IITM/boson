@@ -10,8 +10,6 @@ def get_db_connection():
         host="localhost"
     )
 
-
-
 def setup_database():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1055,16 +1053,21 @@ def export_to_jsonl():
         cur.execute("SELECT filename FROM files;")
         filenames = cur.fetchall()
 
+
         for filename_tuple in filenames:
             filename = filename_tuple[0]
+            cur.execute("SELECT COUNT(*) FROM prompts WHERE file_id = (SELECT id FROM files WHERE filename = %s)", (filename,))
+            expected_fields = cur.fetchone()[0]
 
             # Query data from the database
             cur.execute("""
                 SELECT
-                    p.prompt_text AS prompt,
+                    p.id AS line_id,
+                    p.prompt_text AS question,
                     p.create_skip_reason AS create_skip_reason,
                     p.review_skip_reason AS review_skip_reason,
-                    p.meta_data AS meta,
+                    p.create_skip_cat AS create_skip_cat,
+                    p.review_skip_cat AS review_skip_cat,
                     r.id AS response_id,
                     r.response_text AS response,
                     CASE
@@ -1072,15 +1075,41 @@ def export_to_jsonl():
                         ELSE lr.score
                     END AS response_score,
                     j.id AS judgement_id,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj.reason
-                        ELSE lj.reason
-                    END AS judgement_reason,
                     j.rubric AS judgement_rubric,
                     CASE
                         WHEN p.phase = 'review' THEN rj.score
                         ELSE lj.score
-                    END AS judgement_score
+                    END AS judger_1_score,
+                    CASE
+                        WHEN p.phase = 'review' THEN rj.reason
+                        ELSE lj.reason
+                    END AS judger_1_response,
+                    CASE
+                        WHEN p.phase = 'review' THEN rj.score
+                        ELSE lj.score
+                    END AS judger_1_updated_score,
+                    CASE
+                        WHEN p.phase = 'review' THEN rj.reason
+                        ELSE lj.reason
+                    END AS judger_1_updated_response,
+                    j2.id AS judgement_id_2,
+                    j2.rubric AS judgement_rubric_2,
+                    CASE
+                        WHEN p.phase = 'review' THEN rj2.score
+                        ELSE lj2.score
+                    END AS judger_2_score,
+                    CASE
+                        WHEN p.phase = 'review' THEN rj2.reason
+                        ELSE lj2.reason
+                    END AS judger_2_response,
+                    CASE
+                        WHEN p.phase = 'review' THEN rj2.score
+                        ELSE lj2.score
+                    END AS judger_2_updated_score,
+                    CASE
+                        WHEN p.phase = 'review' THEN rj2.reason
+                        ELSE lj2.reason
+                    END AS judger_2_updated_response
                 FROM
                     prompts p
                 LEFT JOIN
@@ -1096,74 +1125,108 @@ def export_to_jsonl():
                 LEFT JOIN
                     reviewed_judgements rj ON j.id = rj.judgement_id
                 LEFT JOIN
+                    judgements j2 ON r.id = j2.response_id AND j2.id != j.id
+                LEFT JOIN
+                    labelled_judgements lj2 ON j2.id = lj2.judgement_id
+                LEFT JOIN
+                    reviewed_judgements rj2 ON j2.id = rj2.judgement_id
+                LEFT JOIN
                     files f ON p.file_id = f.id
                 WHERE
                     p.phase IN ('create', 'review')
                 AND
-                    p.status = 'done'
+                    (p.status = 'done' OR (p.status = 'skip' and p.phase= 'review'))
                 AND
                     f.filename = %s
                 ORDER BY
-                    p.prompt_text, r.id, j.id;
+                    p.id, r.id, j.id;
             """, (filename,))
 
             # Fetch all rows
             rows = cur.fetchall()
 
-            # Organize data by prompt
-            prompts = {}
+            if rows and len(rows[0]) != expected_fields:
+                gr.Info(f"Skipping file {filename} due to unexpected data length.")
+                continue
+
+
+            # Organize data by line_id
+            data = {}
             for row in rows:
-                prompt_text = row[0]
-                if prompt_text not in prompts:
-                    prompts[prompt_text] = {
-                        "prompt": prompt_text,
-                        "reason_for_skip": row[1],
-                        "judgements_1_skip_reason": row[2],
-                        "judgements_2_skip_reason": row[3],
-                        "judgements_3_skip_reason": row[4],
-                        "meta": row[5],
-                        "responses": {}
-                    }
-
+                line_id = row[0]
+                question = row[1]
+                create_skip_reason = row[2]
+                review_skip_reason = row[3]
+                create_skip_cat = row[4]
+                review_skip_cat = row[5]
                 response_id = row[6]
-                if response_id not in prompts[prompt_text]["responses"]:
-                    prompts[prompt_text]["responses"][response_id] = {
-                        "response_id": response_id,
-                        "response": row[7],
-                        "response_score": row[8],
-                        "per_response_judgment": []
+                response_text = row[7]
+                response_score = row[8]
+                judgement_id = row[9]
+                judgement_rubric = row[10]
+                judger_1_score = row[11]
+                judger_1_response = row[12]
+                judger_1_updated_score = row[13]
+                judger_1_updated_response = row[14]
+                judgement_id_2 = row[15]
+                judgement_rubric_2 = row[16]
+                judger_2_score = row[17]
+                judger_2_response = row[18]
+                judger_2_updated_score = row[19]
+                judger_2_updated_response = row[20]
+
+                if line_id not in data:
+                    data[line_id] = {
+                        "line_id": line_id,
+                        "question": question,
+                        "responses": [],
+                        "scores": [],
+                        "is_skip": False,
+                        "is_skip_reason": "",
+                        "judger_responses": []
                     }
 
-                judgement = {
-                    "judgement_id": row[9],
-                    "reason": row[10],
-                    "rubric": row[11],
-                    "score": row[12]
-                }
+                if create_skip_reason or review_skip_reason:
+                    data[line_id]["is_skip"] = True
+                    data[line_id]["is_skip_reason"] = f"{create_skip_cat or ''}: {create_skip_reason or ''}, {review_skip_cat or ''}: {review_skip_reason or ''}".strip(", ")
 
-                prompts[prompt_text]["responses"][response_id]["per_response_judgment"].append(judgement)
+                if response_id not in [resp["response_id"] for resp in data[line_id]["responses"]]:
+                    data[line_id]["responses"].append(response_text)
+                    data[line_id]["scores"].append(response_score)
+
+                judger_responses = {
+                    "question": question,
+                    "response": response_text,
+                    "rubric": judgement_rubric,
+                    "judger 1 score": judger_1_score,
+                    "judger 1 response": judger_1_response,
+                    "judger 1 updated score": judger_1_updated_score,
+                    "judger 1 updated response": judger_1_updated_response,
+                    "judger 2 score": judger_2_score,
+                    "judger 2 response": judger_2_response,
+                    "judger 2 updated score": judger_2_updated_score,
+                    "judger 2 updated response": judger_2_updated_response,
+                    "is_skip": data[line_id]["is_skip"],
+                    "is_skip_reason": data[line_id]["is_skip_reason"]
+                }
+                data[line_id]["judger_responses"].append(judger_responses)
 
             # Write data to JSONL file
             with open(f"{filename}", "w") as f:
-                for prompt in prompts.values():
-                    prompt_copy = prompt.copy()
-                    prompt_copy["responses"] = list(prompt_copy["responses"].values())
-                    json.dump(prompt_copy, f)
+                for entry in data.values():
+                    json.dump(entry, f)
                     f.write('\n')
 
             print(f"Data exported to {filename} successfully.")
 
-
     except Exception as e:
-        print(f"Error exporting data to JSONL files: {e}")
+        print(f"An error occurred: {e}")
 
     finally:
-        # Close cursor and connection
-        cur.close()
-        conn.close()
-        file_paths = [os.path.abspath(filename[0]) for filename in filenames]
-        return file_paths
-
+        if conn:
+            cur.close()
+            conn.close()
+            print("Database connection closed.")
 # Usage example
 # export_to_jsonl()
 
@@ -1803,6 +1866,8 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             for i in range(len(prompts_list)):
                                 if prompts_list[i]['prompt_id'] == curr_prompt['prompt_id']:
                                     prompts_list[i] = curr_prompt
+                                    if i == 9:
+                                        raise gr.Error('No more pormpts to go back !!')
                                     return prompts_list
                             prompts_list.append(curr_prompt)
                             return prompts_list
@@ -1813,7 +1878,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                                 p = prompts_list[-n_clicks-1]
                             except:
                                 p = prompts_list[-n_clicks]
-                                gr.Warning('No more prompts in history to go back !!')
+                                raise gr.Warning('No more prompts in history to go back !!')
                             
                             n_clicks += 1
                             print(n_clicks)
