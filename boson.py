@@ -545,7 +545,7 @@ def load_question(username, user_task, filename):
         # Call the stored procedure
         cur.execute("""
             SELECT * FROM initialize_response_scores(%s, %s, %s)
-        """, (username, user_task.lower(), filename))
+        """, (username.lower(), user_task.lower(), filename))
 
         row = cur.fetchone()  # Fetch only one row
         conn.commit()
@@ -603,9 +603,9 @@ def load_question(username, user_task, filename):
 def load_scoring_quest(username, row):
     if row is None:
         gr.Info("There are no more Prompts for Labelling, Please select another file")
-        return (gr.Tabs(selected=1), username) + (None,) * 47
+        return (gr.Tabs(selected=1), username.lower()) + (None,) * 47
     return (
-        gr.Tabs(), username, row['prompt_id'], gr.Textbox(value=row["question"], autoscroll=False),  gr.Textbox(value=row["response_1"], autoscroll=False),gr.Textbox(value= row["response_2"], autoscroll=False), gr.Textbox(value=row["response_3"], autoscroll=False),
+        gr.Tabs(), username.lower(), row['prompt_id'], gr.Textbox(value=row["question"], autoscroll=False),  gr.Textbox(value=row["response_1"], autoscroll=False),gr.Textbox(value= row["response_2"], autoscroll=False), gr.Textbox(value=row["response_3"], autoscroll=False),
         row["response_1_id"], row["response_2_id"], row["response_3_id"], 0, 0, 0,
         row["judgement_1_1_id"], row["judgement_1_2_id"], row["judgement_1_1_score"], row["judgement_1_2_score"],
         gr.Textbox(value=row["judgement_1_1_reason"], autoscroll=False), gr.Textbox(value=row["judgement_1_2_reason"], autoscroll=False), gr.Textbox(value=row["judgement_1_1_rubric"], autoscroll=False),
@@ -689,7 +689,7 @@ def save_and_next_j1(curr_prompt, username, user_task, filename, id_1_j1, id_2_j
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
-        q = load_question(username, user_task.lower(), filename)
+        q = load_question(username.lower(), user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), ''
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -725,7 +725,7 @@ def skip_and_next_j1(skip_reason, username, user_task, filename ,curr_prompt,id_
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
-        q = load_question(username, user_task.lower(), filename)
+        q = load_question(username.lower(), user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -759,7 +759,7 @@ def save_and_next_j2(curr_prompt, username, user_task, filename, id_1_j2, id_2_j
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
-        q = load_question(username, user_task.lower(), filename)
+        q = load_question(username.lower(), user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -793,7 +793,7 @@ def skip_and_next_j2(skip_reason , username, user_task, filename, curr_prompt,id
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
-        q = load_question(username, user_task.lower(), filename)
+        q = load_question(username.lower(), user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -823,7 +823,7 @@ def save_and_next_j3(username, user_task, filename, curr_prompt, id_1_j3, id_2_j
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
-        q = load_question(username, user_task.lower(), filename)
+        q = load_question(username.lower(), user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
         return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
@@ -858,7 +858,7 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
-        q = load_question(username, user_task.lower(), filename)
+        q = load_question(username.lower(), user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
 
@@ -1145,7 +1145,7 @@ def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
     update_prompt_status_in_db(prompt_id, user_task.lower())
-    q = load_question(username, user_task.lower(), filename)
+    q = load_question(username.lower(), user_task.lower(), filename)
     if q is None:
         return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
     return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
@@ -1177,7 +1177,7 @@ def skip_and_next(n_clicks, skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2,
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
     update_prompt_status_in_db(prompt_id, user_task.lower())
-    q = load_question(username, user_task.lower(), filename)
+    q = load_question(username.lower(), user_task.lower(), filename)
     if q is None:
         return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
     return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
@@ -1200,15 +1200,15 @@ def verify_user(username, password):
     conn = get_db_connection()
     cur = conn.cursor()
     query = sql.SQL("SELECT username FROM users WHERE username = %s AND password = %s")
-    cur.execute(query, (username, password))
+    cur.execute(query, (username.lower(), password))
     result = cur.fetchone()
     cur.close()
     conn.close()
     return result is not None
 
 def login(username, password, user_task):
-    if verify_user(username, password):
-        return username, user_task
+    if verify_user(username.lower(), password):
+        return username.lower(), user_task
     gr.Warning("Please Enter Correct credentials!")
 
 def get_files(username, user_task):
@@ -1294,7 +1294,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
     def update_user_info(username, task_name, filename):
         return f"""
-        **User Information:** **Username:** {username}, **Task:** {task_name}, **Filename:** {filename}
+        **User Information:** **Username:** {username.lower()}, **Task:** {task_name}, **Filename:** {filename}
         """
 
     def update_prompt_counts(filename, user_task, curr_usertask):
@@ -1360,7 +1360,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         cur = conn.cursor()
 
                         # Check if the user already exists
-                        cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+                        cur.execute("SELECT * FROM users WHERE username = %s", (username.lower(),))
                         existing_user = cur.fetchone()
 
                         if existing_user:
@@ -1369,7 +1369,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             return None
 
                         # Add the new user if the user does not exist
-                        cur.execute("INSERT INTO users (username, password, user_role) VALUES (%s, %s, %s)", (username, password, role))
+                        cur.execute("INSERT INTO users (username, password, user_role) VALUES (%s, %s, %s)", (username.lower(), password, role))
                         conn.commit()
                         conn.close()
                         return gr.Info('New User Added Successfully !!')
@@ -1380,7 +1380,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         cur = conn.cursor()
 
                         # Check if the user exists
-                        cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+                        cur.execute("SELECT * FROM users WHERE username = %s", (username.lower(),))
                         existing_user = cur.fetchone()
 
                         if not existing_user:
@@ -1389,7 +1389,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             return None
 
                         # Update the user's credentials if the user exists
-                        cur.execute("UPDATE users SET password = %s, user_role = %s WHERE username = %s", (new_password, new_role, username))
+                        cur.execute("UPDATE users SET password = %s, user_role = %s WHERE username = %s", (new_password, new_role, username.lower()))
                         conn.commit()
                         conn.close()
                         return gr.Info('User credentials updated successfully !!')
@@ -1428,7 +1428,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 cur = conn.cursor()
 
                 # Check if the user exists
-                cur.execute("SELECT password FROM users WHERE username = %s", (username,))
+                cur.execute("SELECT password FROM users WHERE username = %s", (username.lower(),))
                 existing_user = cur.fetchone()
 
                 if not existing_user:
@@ -1444,7 +1444,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     return None
 
                 # Update the password if the old password is correct
-                cur.execute("UPDATE users SET password = %s WHERE username = %s", (new_password, username))
+                cur.execute("UPDATE users SET password = %s WHERE username = %s", (new_password, username.lower()))
                 conn.commit()
                 conn.close()
                 return gr.Info('Password reset successfully.')
@@ -1497,14 +1497,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 outputs=[curr_username, curr_user_task]
             )
             def show_admin(curr_username):
-                if curr_username == 'admin':
+                if curr_username.lower() == 'admin':
                     return gr.Tabs(visible=True), gr.Tabs(selected=10)
                 return gr.Tabs(visible=False), gr.Tabs(selected=1)
             curr_username.change(show_admin, curr_username, outputs=[admin, tabs])
             def update_files(username, user_task):
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
-                files = get_files(username, user_task.lower())
+                files = get_files(username.lower(), user_task.lower())
 
                 if (files != []) and (files is not None):
                     files = [file.split('/')[-1] for file in files]
@@ -1512,7 +1512,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 return gr.Dropdown( choices=['No files available'])
         def load_question_first(username, curr_user_task, file_selection):
 
-            q = load_question(username, curr_user_task.lower(), file_selection)
+            q = load_question(username.lower(), curr_user_task.lower(), file_selection)
 
             return gr.Tabs(selected=2), q
         with gr.Tab("Selection", id=1) as selection_tab:
