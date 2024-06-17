@@ -1,3 +1,4 @@
+from pickle import NONE
 
 import psycopg2
 from psycopg2 import sql
@@ -9,149 +10,6 @@ def get_db_connection():
         password="Ddd@1234",  # Replace with your password
         host="localhost"
     )
-
-def setup_database():
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    # Drop existing tables
-    cur.execute("""
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
-                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """)
-
-    # Drop existing functions
-    cur.execute("""
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (SELECT routine_name FROM information_schema.routines WHERE routine_type='FUNCTION' AND specific_schema = current_schema()) LOOP
-                EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.routine_name) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """)
-
-    # Create users table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password VARCHAR(50) NOT NULL,
-            user_role VARCHAR(50) NOT NULL
-        )
-    """)
-
-    # Insert test data
-    cur.execute("""
-        INSERT INTO users (username, password, user_role) VALUES
-        ('creator1', 'password1', 'creator'),
-        ('creator2', 'password2', 'creator'),
-        ('reviewer1', 'password3', 'reviewer'),
-        ('admin', 'admin', 'admin')
-        ON CONFLICT (username) DO NOTHING
-    """)
-
-    # Create files table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS files (
-            id SERIAL PRIMARY KEY,
-            filename VARCHAR(255) UNIQUE NOT NULL
-        )
-    """)
-
-    # Create prompts table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS prompts (
-            id SERIAL PRIMARY KEY,
-            prompt_text TEXT NOT NULL,
-            domain VARCHAR(255),
-            task VARCHAR(255),
-            meta_data JSONB,
-            phase VARCHAR(20),
-            status VARCHAR(20),
-            file_id INTEGER REFERENCES files(id),
-            create_user VARCHAR(20),
-            review_user VARCHAR(20),
-            create_start_time TIMESTAMP,
-            create_end_time TIMESTAMP,
-            create_skip_reason TEXT,
-            create_skip_cat TEXT,
-            review_skip_reason TEXT,
-            review_skip_cat TEXT,
-            review_start_time TIMESTAMP,
-            review_end_time TIMESTAMP
-        )
-    """)
-
-    # Create responses table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS responses (
-            id SERIAL PRIMARY KEY,
-            prompt_id INTEGER REFERENCES prompts(id),
-            response_text TEXT NOT NULL
-        )
-    """)
-
-    # Create judgements table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS judgements (
-            id SERIAL PRIMARY KEY,
-            response_id INTEGER REFERENCES responses(id),
-            reason TEXT,
-            rubric TEXT,
-            score INTEGER
-        )
-    """)
-
-    # Create labelled_responses table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS labelled_responses (
-            id SERIAL PRIMARY KEY,
-            response_id INTEGER UNIQUE REFERENCES responses(id),
-            score INTEGER
-        )
-    """)
-
-    # Create labelled_judgements table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS labelled_judgements (
-            id SERIAL PRIMARY KEY,
-            judgement_id INTEGER UNIQUE REFERENCES judgements(id),
-            reason TEXT,
-            score INTEGER
-        )
-    """)
-
-    # Create reviewed_responses table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS reviewed_responses (
-            id SERIAL PRIMARY KEY,
-            response_id INTEGER REFERENCES responses(id),
-            score INTEGER
-        )
-    """)
-
-    # Create reviewed_judgements table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS reviewed_judgements (
-            id SERIAL PRIMARY KEY,
-            judgement_id INTEGER REFERENCES judgements(id),
-            reason TEXT,
-            score INTEGER
-        )
-    """)
-
-    conn.commit()
-    cur.close()
-    conn.close()
-setup_database()
-print("Database setup complete.")
-
 
 
 
@@ -178,7 +36,7 @@ def insert_file_data(filename, data):
         # Rollback the transaction in case of error
         if conn:
             conn.rollback()
-        raise gr.Error(error)
+        gr.Warning(error)
 
     finally:
         # Close the database connection
@@ -281,7 +139,7 @@ END;
 $$ LANGUAGE plpgsql;
 """
 create_stored_procedure(proc)
-
+import json
 # SQL command to create the stored procedure
 create_procedure_sql = """
 CREATE OR REPLACE FUNCTION initialize_response_scores(p_create_user VARCHAR(50), p_user_task VARCHAR(50), p_filename VARCHAR(255))
@@ -687,7 +545,7 @@ def load_question(username, user_task, filename):
         # Call the stored procedure
         cur.execute("""
             SELECT * FROM initialize_response_scores(%s, %s, %s)
-        """, (username, user_task, filename))
+        """, (username, user_task.lower(), filename))
 
         row = cur.fetchone()  # Fetch only one row
         conn.commit()
@@ -830,8 +688,8 @@ def save_and_next_j1(curr_prompt, username, user_task, filename, id_1_j1, id_2_j
         print(curr_prompt)
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
-        update_prompt_status_in_db(prompt_id, user_task)
-        q = load_question(username, user_task, filename)
+        update_prompt_status_in_db(prompt_id, user_task.lower())
+        q = load_question(username, user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), ''
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -849,7 +707,7 @@ def skip_and_next_j1(skip_reason, username, user_task, filename ,curr_prompt,id_
 
         cur.callproc("update_judgements_and_prompt", (id_1_j1, id_2_j1, score_1_j1, score_2_j1, reason_1_j1, reason_2_j1, curr_prompt['prompt_id']))
         cur.execute(
-            f"UPDATE prompts SET {user_task}_skip_reason = %s , {user_task}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
+            f"UPDATE prompts SET {user_task.lower()}_skip_reason = %s , {user_task.lower()}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
             (skip_reason, skip_cat, curr_prompt['prompt_id'])
         )
 
@@ -860,14 +718,14 @@ def skip_and_next_j1(skip_reason, username, user_task, filename ,curr_prompt,id_
         curr_prompt["judgement_1_1_reason"] = reason_1_j1
         curr_prompt["judgement_1_2_score"] = score_2_j1
         curr_prompt["judgement_1_2_reason"] = reason_2_j1
-        curr_prompt[f"{user_task}_skip_reason"] = skip_reason
-        curr_prompt[f"{user_task}_skip_cat"] = skip_cat
+        curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
+        curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
         print("Judgements updated and prompt set to review and hold successfully")
 
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
-        update_prompt_status_in_db(prompt_id, user_task)
-        q = load_question(username, user_task, filename)
+        update_prompt_status_in_db(prompt_id, user_task.lower())
+        q = load_question(username, user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -900,8 +758,8 @@ def save_and_next_j2(curr_prompt, username, user_task, filename, id_1_j2, id_2_j
         print(curr_prompt)
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
-        update_prompt_status_in_db(prompt_id, user_task)
-        q = load_question(username, user_task, filename)
+        update_prompt_status_in_db(prompt_id, user_task.lower())
+        q = load_question(username, user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -920,7 +778,7 @@ def skip_and_next_j2(skip_reason , username, user_task, filename, curr_prompt,id
 
         cur.callproc("update_judgements_and_prompt", (id_1_j2, id_2_j2, score_1_j2, score_2_j2, reason_1_j2, reason_2_j2, curr_prompt['prompt_id']))
         cur.execute(
-            f"UPDATE prompts SET {user_task}_skip_reason = %s , {user_task}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
+            f"UPDATE prompts SET {user_task.lower()}_skip_reason = %s , {user_task.lower()}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
             (skip_reason, skip_cat, curr_prompt['prompt_id'])
         )
         conn.commit()
@@ -930,12 +788,12 @@ def skip_and_next_j2(skip_reason , username, user_task, filename, curr_prompt,id
         curr_prompt["judgement_2_1_reason"] = reason_1_j2
         curr_prompt["judgement_2_2_score"] = score_2_j2
         curr_prompt["judgement_2_2_reason"] = reason_2_j2
-        curr_prompt[f"{user_task}_skip_reason"] = skip_reason
-        curr_prompt[f"{user_task}_skip_cat"] = skip_cat
+        curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
+        curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
-        update_prompt_status_in_db(prompt_id, user_task)
-        q = load_question(username, user_task, filename)
+        update_prompt_status_in_db(prompt_id, user_task.lower())
+        q = load_question(username, user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
@@ -964,8 +822,8 @@ def save_and_next_j3(username, user_task, filename, curr_prompt, id_1_j3, id_2_j
         print(curr_prompt)
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
-        update_prompt_status_in_db(prompt_id, user_task)
-        q = load_question(username, user_task, filename)
+        update_prompt_status_in_db(prompt_id, user_task.lower())
+        q = load_question(username, user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
         return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
@@ -984,7 +842,7 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
 
         cur.callproc("update_judgements_and_prompt", (id_1_j3, id_2_j3, score_1_j3, score_2_j3, reason_1_j3, reason_2_j3, curr_prompt['prompt_id']))
         cur.execute(
-            f"UPDATE prompts SET {user_task}_skip_reason = %s , {user_task}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
+            f"UPDATE prompts SET {user_task.lower()}_skip_reason = %s , {user_task.lower()}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
             (skip_reason, skip_cat, curr_prompt['prompt_id'])
         )
         conn.commit()
@@ -994,13 +852,13 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
         curr_prompt["judgement_3_1_reason"] = reason_1_j3
         curr_prompt["judgement_3_2_score"] = score_2_j3
         curr_prompt["judgement_3_2_reason"] = reason_2_j3
-        curr_prompt[f"{user_task}_skip_reason"] = skip_reason
-        curr_prompt[f"{user_task}_skip_cat"] = skip_cat
+        curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
+        curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
         print(curr_prompt)
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
-        update_prompt_status_in_db(prompt_id, user_task)
-        q = load_question(username, user_task, filename)
+        update_prompt_status_in_db(prompt_id, user_task.lower())
+        q = load_question(username, user_task.lower(), filename)
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
 
@@ -1276,7 +1134,7 @@ def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_
     curr_prompt["score_2"] = score_2
     curr_prompt["score_3"] = score_3
     if not(score_1 and score_2 and score_3):
-        raise gr.Error('Please fill scores for all fields')
+        gr.Warning('Please fill scores for all fields')
     if get_judgement_data(id_1_j1) or get_judgement_data(id_2_j1) :
         return gr.Tabs(selected=3), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False) ,curr_prompt, n_clicks
     if get_judgement_data(id_1_j2) or get_judgement_data(id_2_j2) :
@@ -1286,8 +1144,8 @@ def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_
     print(curr_prompt)
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
-    update_prompt_status_in_db(prompt_id, user_task)
-    q = load_question(username, user_task, filename)
+    update_prompt_status_in_db(prompt_id, user_task.lower())
+    q = load_question(username, user_task.lower(), filename)
     if q is None:
         return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
     return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
@@ -1301,7 +1159,7 @@ def skip_and_next(n_clicks, skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2,
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        f"UPDATE prompts SET {user_task}_skip_reason = %s , {user_task}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
+        f"UPDATE prompts SET {user_task.lower()}_skip_reason = %s , {user_task.lower()}_skip_cat = %s , phase = 'review', status = '{ 'yts' if user_task.lower() == 'create' else 'skip'}' WHERE id = %s",
         (skip_reason, skip_cat, curr_prompt['prompt_id'])
     )
     conn.commit()
@@ -1310,16 +1168,16 @@ def skip_and_next(n_clicks, skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2,
     curr_prompt["score_1"] = 0
     curr_prompt["score_2"] = 0
     curr_prompt["score_3"] = 0
-    curr_prompt[f"{user_task}_skip_reason"] = skip_reason
-    curr_prompt[f"{user_task}_skip_cat"] = skip_cat
+    curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
+    curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
     if n_clicks != 0:
         n_clicks -= 1
 
     print(curr_prompt)
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
-    update_prompt_status_in_db(prompt_id, user_task)
-    q = load_question(username, user_task, filename)
+    update_prompt_status_in_db(prompt_id, user_task.lower())
+    q = load_question(username, user_task.lower(), filename)
     if q is None:
         return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
     return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q, n_clicks
@@ -1351,7 +1209,7 @@ def verify_user(username, password):
 def login(username, password, user_task):
     if verify_user(username, password):
         return username, user_task
-    raise gr.Error("Please Enter Correct credentials!")
+    gr.Warning("Please Enter Correct credentials!")
 
 def get_files(username, user_task):
   if username != '':
@@ -1371,7 +1229,7 @@ def get_files(username, user_task):
             INNER JOIN prompts p ON f.id = p.file_id
             WHERE p.phase = %s AND p.status = 'yts'
         """
-        cur.execute(query, (user_task,))
+        cur.execute(query, (user_task.lower(),))
         filenames = cur.fetchall()
 
         return [filename[0] for filename in filenames]
@@ -1388,7 +1246,48 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
     username = gr.State(value="")
     curr_username = gr.Textbox(username, visible=False)
     prompt = gr.State(value = {})
-    curr_prompt = gr.JSON(prompt, visible=False)
+    p =  {
+                "prompt_id": None,
+                "question": None,
+                "create_skip_reason": None,
+                "review_skip_reason": None,
+                "create_skip_cat": None,
+                "review_skip_cat": None,
+                "response_1_id": None,
+                "response_1": None,
+                "score_1": 0,
+                "judgement_1_1_id": None,
+                "judgement_1_1_score": None,
+                "judgement_1_1_rubric": None,
+                "judgement_1_1_reason": None,
+                "judgement_1_2_id": None,
+                "judgement_1_2_score": None,
+                "judgement_1_2_rubric": None,
+                "judgement_1_2_reason": None,
+                "response_2_id": None,
+                "response_2": None,
+                "score_2": 0,
+                "judgement_2_1_id": None,
+                "judgement_2_1_score": None,
+                "judgement_2_1_rubric": None,
+                "judgement_2_1_reason": None,
+                "judgement_2_2_id": None,
+                "judgement_2_2_score": None,
+                "judgement_2_2_rubric": None,
+                "judgement_2_2_reason": None,
+                "response_3_id": None,
+                "response_3": None,
+                "score_3": 0,
+                "judgement_3_1_id": None,
+                "judgement_3_1_score": None,
+                "judgement_3_1_rubric": None,
+                "judgement_3_1_reason": None,
+                "judgement_3_2_id" : None,
+                "judgement_3_2_score": None,
+                "judgement_3_2_rubric": None,
+                "judgement_3_2_reason": None
+            }
+    curr_prompt = gr.State(value=p)
     prompt_id = gr.Textbox('', visible=False)
     user_task = gr.State(value="")
     curr_user_task = gr.Textbox(username, visible=False)
@@ -1400,18 +1299,15 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
     def update_prompt_counts(filename, user_task, curr_usertask):
         total_count, create_done, create_skipped, create_WIP, create_YTS, review_done, review_skipped, review_WIP, review_YTS = get_prompt_counts(filename)
-   
+
         # Check for None and handle accordingly
         user_task_lower = user_task.lower() if user_task else ''
         curr_usertask_lower = curr_usertask.lower() if curr_usertask else ''
         task = user_task_lower if user_task_lower else curr_usertask_lower
 
         if task is not None:
-            if task == 'create':
-                done, skipped, WIP, YTS = create_done + review_done, create_skipped, create_WIP , create_YTS
-            else:
-                done, skipped, WIP, YTS = review_done + create_done, review_skipped, review_WIP , review_YTS
-            markdown_text = f"Total Records: {total_count}, Completed: {done}, Skipped: {skipped}, WIP: {WIP}, YTS: {YTS} "
+            done, skipped, WIP, YTS, reviewyts = create_done + review_done, create_skipped + review_skipped, create_WIP + review_WIP , create_YTS , review_YTS
+            markdown_text = f"Total Records: {total_count}, Completed: {done}, Skipped: {skipped}, Create WIP: {create_WIP}, Create YTS: {YTS}, Review YTS - {review_YTS}, Review WIP - {review_WIP} "
         else:
             markdown_text = None
 
@@ -1469,7 +1365,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         if existing_user:
                             conn.close()
-                            raise gr.Error('User already exists.')
+                            gr.Warning('User already exists.')
                             return None
 
                         # Add the new user if the user does not exist
@@ -1489,7 +1385,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         if not existing_user:
                             conn.close()
-                            raise gr.Error('User does not exist.')
+                            gr.Warning('User does not exist.')
                             return None
 
                         # Update the user's credentials if the user exists
@@ -1537,14 +1433,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                 if not existing_user:
                     conn.close()
-                    raise gr.Error('User does not exist.')
+                    gr.Warning('User does not exist.')
                     return None
 
                 # Check if the old password is correct
                 stored_password = existing_user[0]
                 if stored_password != old_password:
                     conn.close()
-                    raise gr.Error('Old password is incorrect.')
+                    gr.Warning('Old password is incorrect.')
                     return None
 
                 # Update the password if the old password is correct
@@ -1580,9 +1476,15 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     )
                 with gr.Column(scale=1):
                     x = gr.Markdown('')
+            
+            def validate(s1, s2, s3):
+                if s1 is not None and s2 is not None and s3 is not None:
+                    return gr.Button(interactive=True)
+                return gr.Button(interactive=False)
 
-            def validate(s1,s2,s3):
-                if s1 and s2 and s3:
+            def validate_scores(s1,s2,s3):
+                if s1 is not None and s2 is not None and s3 is not None and int(s1) > 0 and int(s2) >0 and int(s3) >0:
+                    print(s1,s2,s3)
                     return gr.Button(interactive=True)
                 return gr.Button(interactive=False)
             l_user.change(validate, inputs=[l_user, l_pass, l_task], outputs=[l_submit])
@@ -1603,15 +1505,15 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
                 files = get_files(username, user_task.lower())
-            
+
                 if (files != []) and (files is not None):
                     files = [file.split('/')[-1] for file in files]
                     return  gr.Dropdown( choices=files, interactive=True)
                 return gr.Dropdown( choices=['No files available'])
         def load_question_first(username, curr_user_task, file_selection):
-    
-            q = load_question(username, curr_user_task, file_selection)
-          
+
+            q = load_question(username, curr_user_task.lower(), file_selection)
+
             return gr.Tabs(selected=2), q
         with gr.Tab("Selection", id=1) as selection_tab:
           with gr.Row(equal_height=True):
@@ -1651,7 +1553,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
 
         with gr.Tab("SubTask1", id=2, visible=False) as subtask1:
-           
+
             with gr.Row(equal_height=True):
                 with gr.Column(scale=0.35):
                     question = gr.Textbox(label="Question",autoscroll=False,max_lines=20, lines=20, interactive=False)
@@ -1663,21 +1565,28 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
 
                         prev_button = gr.Button('Prev', interactive=False, visible=True)
-                
-              
+
+
                         next_button = gr.Button("Next", interactive=False)
+                        def uninter():
+                            return gr.Button(interactive=False)
+                        curr_prompt.change(
+                            fn=uninter,
+                            inputs=None,
+                            outputs=[next_button]
+                        )
                         with gr.Accordion("Skip", open=False) as acc_0:
                             skip = gr.Button('Skip', interactive=False)
-                            skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value  )
-                            response_skip_reason = gr.Textbox(label='Reason', value =  review_skip_reason.value or create_skip_reason.value ,autoscroll=False, interactive=True)
+                            skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            response_skip_reason = gr.Textbox(label='Reason', value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] ,autoscroll=False, interactive=True)
 
                         def show(value):
                             if value is not None and value != '' and value != 'Clear Skip':
-                                return gr.Button(interactive=True), gr.Button(interactive=False), gr.Button(interactive=False) 
+                                return gr.Button(interactive=True), gr.Button(interactive=False), gr.Button(interactive=False)
                             return gr.Button(interactive=False),  gr.Button(interactive=True), gr.Button(interactive=True)
                         skip_cat.change(show, skip_cat, [skip, next_button, prev_button])
-                        def reset_acc():
-                            return gr.Accordian(open=False), gr.Accordian(open=False), gr.Accordian(open=False), gr.Accordian(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None)
+                        def reset_acc(curr_prompt):
+                            return gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat'])
 
 
                 with gr.Column():
@@ -1696,16 +1605,16 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
 
 
-                        score_1.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
-                        score_2.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
-                        score_3.change(validate, inputs=[score_1, score_2, score_3], outputs=[next_button])
-                        
-                       
+                        score_1.change(validate_scores, inputs=[score_1, score_2, score_3], outputs=[next_button])
+                        score_2.change(validate_scores, inputs=[score_1, score_2, score_3], outputs=[next_button])
+                        score_3.change(validate_scores, inputs=[score_1, score_2, score_3], outputs=[next_button])
+
+
         curr_username.change(change_tab, [gr.Textbox(value=1,autoscroll=False, visible=False)], outputs=[tabs, login_tab, selection_tab, subtask1])
-     
+
 
         with gr.Tab("SubTask2", id=3, visible=False) as judgement_1:
-            
+
             judgements_1 = gr.State(value=curr_prompt.value)
             gr.Markdown("## Subtask 2: Judgement Correction")
             n_clicks_j1 = gr.State(0)
@@ -1724,28 +1633,28 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             inputs=None,
                             outputs=[tabs, judgement_1, subtask1]
                         )
-          
+
                         next_button_j1 = gr.Button("Next")
                         with gr.Accordion("Skip", open=False) as acc_1:
                             skip_button_j1 = gr.Button('Skip', interactive=False)
-                            skip_cat_j1 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value)
-                            skip_reason_j1 = gr.Textbox(label = 'Reason',autoscroll=False, value =  review_skip_reason.value or  create_skip_reason.value , interactive=True)
+                            skip_cat_j1 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            skip_reason_j1 = gr.Textbox(label = 'Reason',autoscroll=False, value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] , interactive=True)
                             skip_cat_j1.change(show, skip_cat_j1, [skip_button_j1, next_button_j1, clear_btn_1])
-                        
+
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
-                            id_1_j1 = gr.Textbox(label="ID 1",autoscroll=False, max_lines=2,lines=2, visible=False)
-                            rubric_1_j1 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False)
-                            score_1_j1 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5])
-                            reason_1_j1 = gr.Textbox(label="Reason 1", autoscroll=False, max_lines=13, lines=13)
+                            id_1_j1 = gr.Textbox(label="ID 1",autoscroll=False, max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_1_1_id'])
+                            rubric_1_j1 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_1_1_rubric'])
+                            score_1_j1 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_1_1_score'])
+                            reason_1_j1 = gr.Textbox(label="Reason 1", autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_1_1_reason'])
                         with gr.Column():
-                            id_2_j1 = gr.Textbox(label="ID 2",autoscroll=False, max_lines=2, lines=2, visible=False)
-                            rubric_2_j1 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1,interactive=False)
-                            score_2_j1 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5])
-                            reason_2_j1 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13)
-                        
-                
+                            id_2_j1 = gr.Textbox(label="ID 2",autoscroll=False, max_lines=2, lines=2, visible=False, value=curr_prompt.value['judgement_1_2_id'])
+                            rubric_2_j1 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1,interactive=False, value=curr_prompt.value['judgement_1_2_rubric'])
+                            score_2_j1 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_1_2_score'])
+                            reason_2_j1 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_1_2_reason'])
+
+
 
 
         with gr.Tab("SubTask2", id=4, visible=False) as judgement_2:
@@ -1771,23 +1680,23 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         with gr.Accordion("Skip", open=False) as acc_2:
                             skip_button_j2 = gr.Button('Skip', interactive=False)
-                            skip_cat_j2 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value)
-                            skip_reason_j2 = gr.Textbox(label = 'Reason' ,value =  review_skip_reason.value or create_skip_reason.value , autoscroll=False, interactive=True)
+                            skip_cat_j2 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            skip_reason_j2 = gr.Textbox(label = 'Reason' ,value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] , autoscroll=False, interactive=True)
                             skip_cat_j2.change(show, skip_cat_j2, [skip_button_j2, next_button_j2, clear_btn_2])
 
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
-                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False)
-                            rubric_1_j2 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False)
-                            score_1_j2 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5])
-                            reason_1_j2 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13)
+                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_2_1_id'])
+                            rubric_1_j2 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_1_rubric'])
+                            score_1_j2 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_2_1_score'])
+                            reason_1_j2 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_2_1_reason'])
                         with gr.Column():
-                            id_2_j2 = gr.Textbox(label="ID 2", max_lines=2, lines=2,autoscroll=False, visible=False)
-                            rubric_2_j2 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1, interactive=False)
-                            score_2_j2 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5])
-                            reason_2_j2 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13)
-        
+                            id_2_j2 = gr.Textbox(label="ID 2", max_lines=2, lines=2,autoscroll=False, visible=False, value=curr_prompt.value['judgement_2_2_id'])
+                            rubric_2_j2 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_2_rubric'])
+                            score_2_j2 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_2_2_score'])
+                            reason_2_j2 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_2_2_reason'])
+
 
 
         with gr.Tab("SubTask2", id=5, visible=False) as judgement_3:
@@ -1811,75 +1720,71 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             outputs=[tabs, judgement_3, judgement_2]
 
                         )
-                        
-                        
+
+
 
 
                         with gr.Accordion("Skip", open=False) as acc_3:
                             skip_button_j3 = gr.Button('Skip', interactive=False)
-                            skip_cat_j3 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= review_skip_cat.value or create_skip_cat.value)
-                            skip_reason_j3 = gr.Textbox(label = 'Reason', value =  review_skip_reason.value or create_skip_reason.value ,autoscroll=False, interactive=True)
+                            skip_cat_j3 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            skip_reason_j3 = gr.Textbox(label = 'Reason', value = curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] ,autoscroll=False, interactive=True)
                             skip_cat_j3.change(show, skip_cat_j3, [skip_button_j3, next_button_j3, clear_btn_3])
 
                 with gr.Column(scale=12):
                     with gr.Row():
                         with gr.Column():
-                            id_1_j3 = gr.Textbox(label="ID 1", max_lines=2, lines=2,autoscroll=False, visible=False)
-                            rubric_1_j3 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False)
-                            score_1_j3 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5])
-                            reason_1_j3 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13)
+                            id_1_j3 = gr.Textbox(label="ID 1", max_lines=2, lines=2,autoscroll=False, visible=False, value=curr_prompt.value['judgement_3_1_id'])
+                            rubric_1_j3 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_3_1_rubric'])
+                            score_1_j3 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_3_1_score'])
+                            reason_1_j3 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_3_1_reason'])
                         with gr.Column():
-                            id_2_j3 = gr.Textbox(label="ID 2", max_lines=2, lines=2, autoscroll=False, visible=False)
-                            rubric_2_j3 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1, lines=1, interactive=False)
-                            score_2_j3 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5])
-                            reason_2_j3 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13)
+                            id_2_j3 = gr.Textbox(label="ID 2", max_lines=2, lines=2, autoscroll=False, visible=False, value=curr_prompt.value['judgement_3_2_id'])
+                            rubric_2_j3 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1, lines=1, interactive=False, value=curr_prompt.value['judgement_3_2_rubric'])
+                            score_2_j3 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_3_2_score'])
+                            reason_2_j3 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_3_2_reason'])
                         def sync_values(question, response_1, response_2, response_3):
                             return question, question, question, response_1, response_2, response_3
-            
-
-                        def reset_acc():
-                            return gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None)
 
 
                         curr_prompt.change(
                             fn = reset_acc,
-                            inputs=None,
-                            outputs = [acc_0, acc_1, acc_2, acc_3, skip, skip_button_j1, skip_button_j2, skip_button_j3, response_skip_reason,skip_reason_j1, skip_reason_j2, skip_reason_j3]
+                            inputs=curr_prompt,
+                            outputs = [acc_0, acc_1, acc_2, acc_3, skip, skip_button_j1, skip_button_j2, skip_button_j3, response_skip_reason,skip_reason_j1, skip_reason_j2, skip_reason_j3, skip_cat_j1, skip_cat_j2,skip_cat_j3, skip_cat]
                           )
 
                         def render_3():
                             return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=True)
-          
+
 
                         def show_btn_j3(n_clicks, j3_list):
                             if n_clicks+1 < len(j3_list):
                                 return gr.Button(interactive=True, visible=True)
-                            return gr.Button(interactive=False, visible=False)
+                            return gr.Button(interactive=False, visible=True)
                         prompts_list = gr.State([])
                         tabs.change(
                             fn=show_btn_j3,
                             inputs=[n_clicks, prompts_list],
                             outputs=prev_button
                         )
-                        
+
                         def add_to_p_list(curr_prompt, prompts_list):
                             for i in range(len(prompts_list)):
                                 if prompts_list[i]['prompt_id'] == curr_prompt['prompt_id']:
                                     prompts_list[i] = curr_prompt
-                                    if i == 9:
-                                        raise gr.Error('No more pormpts to go back !!')
+                                    # if i == 0:
+                                    #     gr.Warning('No more pormpts to go back !!')
                                     return prompts_list
                             prompts_list.append(curr_prompt)
                             return prompts_list
-                            
+
                         curr_prompt.change(add_to_p_list, inputs=[curr_prompt, prompts_list], outputs=prompts_list)
                         def load_prev_prompt(prompts_list, n_clicks):
                             try:
                                 p = prompts_list[-n_clicks-1]
                             except:
                                 p = prompts_list[-n_clicks]
-                                raise gr.Warning('No more prompts in history to go back !!')
-                            
+                                gr.Warning('No more prompts in history to go back !!')
+
                             n_clicks += 1
                             print(n_clicks)
                             print(len(prompts_list))
@@ -1942,15 +1847,29 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             inputs=[skip_reason_j3,curr_username, curr_user_task,file_selection,curr_prompt, id_1_j3, id_2_j3 ,score_1_j3, score_2_j3,reason_1_j3, reason_2_j3, skip_cat_j3],
                             outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt, prev_prompt]
                         )
-                        def show_reason(r1, r2, c1, c2,  curr_user_task):
-                            if curr_user_task.lower() == 'review':                               
-                                v = f"Category - {c1 or c2} , Reason - {r1 or r2}"
+                        def show_reason(r1, r2, c1, c2,  curr_user_task, curr_prompt):
+                            if curr_user_task.lower() == 'review':
+                                r2 = curr_prompt['create_skip_reason']
+                                c2 = curr_prompt['create_skip_cat']
+                                if r2 :
+                                    r = f', Reason - {r2}'
+                                else :
+                                    r = ''
+                                # r1 = curr_prompt['review_skip_reason']
+                                # r2 = curr_prompt['create_skip_reason']
+                                v = f"Category - {c2}" + r
                                 return gr.Markdown(visible=True, value=v), gr.Markdown(visible=True, value=v), gr.Markdown(visible=True, value=v), gr.Markdown(visible=True, value=v)
                             return gr.Markdown(visible=False), gr.Markdown(visible=False), gr.Markdown(visible=False), gr.Markdown(visible=False)
                         curr_prompt.change(load_scoring_quest, inputs=[curr_username, curr_prompt], outputs=[tabs, curr_username, prompt_id, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, score_1, score_2, score_3, id_1_j1, id_2_j1 ,score_1_j1, score_2_j1, reason_1_j1, reason_2_j1, rubric_1_j1, rubric_2_j1, id_1_j2, id_2_j2,score_1_j2, score_2_j2, reason_1_j2, reason_2_j2, rubric_1_j2, rubric_2_j2, id_1_j3, id_2_j3 ,score_1_j3, score_2_j3, reason_1_j3, reason_2_j3, rubric_1_j3, rubric_2_j3, score_1, score_2, score_3 , create_skip_reason, review_skip_reason, skip_cat, review_skip_cat])
-                        create_skip_reason.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
-                        skip_cat.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
-      
+                        
+                        def clear_cat(user_task):
+                            if user_task.lower() == 'review':
+                                return gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None)
+                            return gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                        tabs.change(clear_cat, inputs=user_task, outputs=[skip_cat_j1, skip_cat_j2, skip_cat_j3, skip_cat ])
+                        skip_cat.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
+                        create_skip_reason.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
+                        tabs.change(validate_scores, inputs=[score_1, score_2, score_3], outputs=[next_button]) 
 
 gr.close_all()
 app.launch(debug=True, server_name='0.0.0.0', share=True)
