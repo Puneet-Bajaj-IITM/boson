@@ -1,4 +1,3 @@
-from pickle import NONE
 
 import psycopg2
 from psycopg2 import sql
@@ -353,9 +352,9 @@ BEGIN
         -- Insert into prompts table with truncated values
         INSERT INTO prompts (prompt_text, domain, task, meta_data, phase, status, file_id)
         VALUES (
-            LEFT(prompt_data->>'prompt', 100),
-            LEFT((prompt_data->'meta'->>'prompt_domain')::TEXT, 100),
-            LEFT((prompt_data->'meta'->>'prompt_task')::TEXT, 100),
+            prompt_data->>'prompt',
+            (prompt_data->'meta'->>'prompt_domain')::TEXT,
+            (prompt_data->'meta'->>'prompt_task')::TEXT,
             prompt_data->'meta',
             'create',
             'yts',
@@ -1476,7 +1475,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     )
                 with gr.Column(scale=1):
                     x = gr.Markdown('')
-            
+
             def validate(s1, s2, s3):
                 if s1 is not None and s2 is not None and s3 is not None:
                     return gr.Button(interactive=True)
@@ -1861,7 +1860,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                                 return gr.Markdown(visible=True, value=v), gr.Markdown(visible=True, value=v), gr.Markdown(visible=True, value=v), gr.Markdown(visible=True, value=v)
                             return gr.Markdown(visible=False), gr.Markdown(visible=False), gr.Markdown(visible=False), gr.Markdown(visible=False)
                         curr_prompt.change(load_scoring_quest, inputs=[curr_username, curr_prompt], outputs=[tabs, curr_username, prompt_id, question, response_1, response_2, response_3, response_1_id, response_2_id, response_3_id, score_1, score_2, score_3, id_1_j1, id_2_j1 ,score_1_j1, score_2_j1, reason_1_j1, reason_2_j1, rubric_1_j1, rubric_2_j1, id_1_j2, id_2_j2,score_1_j2, score_2_j2, reason_1_j2, reason_2_j2, rubric_1_j2, rubric_2_j2, id_1_j3, id_2_j3 ,score_1_j3, score_2_j3, reason_1_j3, reason_2_j3, rubric_1_j3, rubric_2_j3, score_1, score_2, score_3 , create_skip_reason, review_skip_reason, skip_cat, review_skip_cat])
-                        
+
                         def clear_cat(user_task):
                             if user_task.lower() == 'review':
                                 return gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None)
@@ -1869,7 +1868,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         tabs.change(clear_cat, inputs=user_task, outputs=[skip_cat_j1, skip_cat_j2, skip_cat_j3, skip_cat ])
                         skip_cat.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
                         create_skip_reason.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
-                        tabs.change(validate_scores, inputs=[score_1, score_2, score_3], outputs=[next_button]) 
+                        tabs.change(validate_scores, inputs=[score_1, score_2, score_3], outputs=[next_button])
 
 gr.close_all()
 app.launch(debug=True, server_name='0.0.0.0', share=True)
