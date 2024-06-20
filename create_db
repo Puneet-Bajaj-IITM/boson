@@ -1,0 +1,156 @@
+
+import psycopg2
+from psycopg2 import sql
+
+def get_db_connection():
+    return psycopg2.connect(
+        dbname="boson",
+        user="ubuntu",
+        password="Ddd@1234",  # Replace with your password
+        host="localhost"
+    )
+
+
+
+def setup_database():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Drop existing tables
+    cur.execute("""
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """)
+
+    # Drop existing functions
+    cur.execute("""
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT routine_name FROM information_schema.routines WHERE routine_type='FUNCTION' AND specific_schema = current_schema()) LOOP
+                EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.routine_name) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """)
+
+    # Create users table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password VARCHAR(50) NOT NULL,
+            user_role VARCHAR(50) NOT NULL
+        )
+    """)
+
+    # Insert test data
+    cur.execute("""
+        INSERT INTO users (username, password, user_role) VALUES
+        ('creator1', 'password1', 'creator'),
+        ('creator2', 'password2', 'creator'),
+        ('reviewer1', 'password3', 'reviewer'),
+        ('admin', 'admin', 'admin')
+        ON CONFLICT (username) DO NOTHING
+    """)
+
+    # Create files table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS files (
+            id SERIAL PRIMARY KEY,
+            filename VARCHAR(255) UNIQUE NOT NULL
+        )
+    """)
+
+    # Create prompts table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS prompts (
+            id SERIAL PRIMARY KEY,
+            prompt_text TEXT NOT NULL,
+            domain VARCHAR(255),
+            task VARCHAR(255),
+            meta_data JSONB,
+            phase VARCHAR(20),
+            status VARCHAR(20),
+            file_id INTEGER REFERENCES files(id),
+            create_user VARCHAR(20),
+            review_user VARCHAR(20),
+            create_start_time TIMESTAMP,
+            create_end_time TIMESTAMP,
+            create_skip_reason TEXT,
+            create_skip_cat TEXT,
+            review_skip_reason TEXT,
+            review_skip_cat TEXT,
+            review_start_time TIMESTAMP,
+            review_end_time TIMESTAMP
+        )
+    """)
+
+    # Create responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS responses (
+            id SERIAL PRIMARY KEY,
+            prompt_id INTEGER REFERENCES prompts(id),
+            response_text TEXT NOT NULL
+        )
+    """)
+
+    # Create judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS judgements (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER REFERENCES responses(id),
+            reason TEXT,
+            rubric TEXT,
+            score INTEGER
+        )
+    """)
+
+    # Create labelled_responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS labelled_responses (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER UNIQUE REFERENCES responses(id),
+            score INTEGER
+        )
+    """)
+
+    # Create labelled_judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS labelled_judgements (
+            id SERIAL PRIMARY KEY,
+            judgement_id INTEGER UNIQUE REFERENCES judgements(id),
+            reason TEXT,
+            score INTEGER
+        )
+    """)
+
+    # Create reviewed_responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_responses (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER REFERENCES responses(id),
+            score INTEGER
+        )
+    """)
+
+    # Create reviewed_judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_judgements (
+            id SERIAL PRIMARY KEY,
+            judgement_id INTEGER REFERENCES judgements(id),
+            reason TEXT,
+            score INTEGER
+        )
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+setup_database()
+print("Database setup complete.")
+
