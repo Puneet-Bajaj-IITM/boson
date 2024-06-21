@@ -332,6 +332,8 @@ DECLARE
     prompt_length INT;
     responses_length INT;
     judgements_length INT;
+    random_index INTEGER;
+    selected_rubric TEXT;
 BEGIN
     -- Check if filename already exists
     PERFORM 1 FROM files WHERE files.filename = p_filename;
@@ -377,13 +379,19 @@ BEGIN
             -- Get the length of the judgements array
             judgements_length := COALESCE(jsonb_array_length(prompt_data->'per_response_judgements'->j), 0);
 
-            -- Loop through judgements for each response
+              -- Loop through judgements for each response
+            random_index := FLOOR(RANDOM() * judgements_length);
+
             FOR k IN 0 .. judgements_length - 1
             LOOP
-                judgement := (prompt_data->'per_response_judgements'->j->k);
+                judgement := (prompt_data->'per_response_judgements'->j->((random_index + k) % judgements_length));
 
-                -- Check if the rubric count for this response exceeds 2
-                IF rubric_count < 2 AND k < 2 THEN
+                IF rubric_count = 0 THEN
+                    selected_rubric := judgement->>'rubric';
+                END IF;
+
+                -- Check if the rubric matches the selected rubric and if the count for this response exceeds 2
+                IF rubric_count < 2 AND judgement->>'rubric' = selected_rubric THEN
                     -- Insert into judgements table
                     INSERT INTO judgements (response_id, reason, rubric, score)
                     VALUES (
@@ -393,6 +401,11 @@ BEGIN
                         (judgement->>'score')::INTEGER
                     );
                     rubric_count := rubric_count + 1;  -- Increment rubric count
+                END IF;
+
+                -- Exit the loop if we have inserted two judgements
+                IF rubric_count = 2 THEN
+                    EXIT;
                 END IF;
             END LOOP; -- end of judgements loop
             rubric_count := 0;  -- Reset rubric count for the next response
