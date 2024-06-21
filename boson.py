@@ -67,8 +67,11 @@ def process_jsonl_files(files):
                 file_data.append(json_data)
 
         # Example: Insert first 3 records from each file into the database
-        insert_file_data(filename, file_data)
-        all_file_data.extend(file_data)
+        try:
+            insert_file_data(filename, file_data)
+            all_file_data.extend(file_data)
+        except Exception as e:
+            gr.Warning(f'Error in {filename} - {e}')
 
     return "Data processed and inserted successfully."
 
@@ -915,180 +918,195 @@ import psycopg2
 import json
 import os
 
-def export_to_jsonl():
+import json
+import psycopg2
+
+
+def fetch_filenames():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT f.filename
+        FROM files f
+        LEFT JOIN prompts p ON f.id = p.file_id
+        GROUP BY f.filename
+        HAVING COUNT(*) = SUM(CASE 
+                                WHEN p.phase IN ('create', 'review') 
+                                    AND (p.status = 'done' OR (p.status = 'skip' AND p.phase = 'review')) 
+                                THEN 1 
+                                ELSE 0 
+                              END);
+
+    """)
+    filenames = cur.fetchall()
+    cur.close()
+    conn.close()
+    if not filenames:
+        gr.Warning('No File Labelled till now!')
+    return gr.Dropdown(choices = [filename[0] for filename in filenames], multiselect=True, label='Files to Export')
+    
+    
+def fetch_expected_fields(cur, filename):
+    cur.execute("""
+        SELECT COUNT(*)
+        FROM prompts
+        WHERE file_id = (SELECT id FROM files WHERE filename = %s);
+    """, (filename,))
+    return cur.fetchone()[0]
+
+def fetch_data(cur, filename):
+    cur.execute("""
+        SELECT
+            p.id AS line_id,
+            p.prompt_text AS question,
+            p.create_skip_reason AS create_skip_reason,
+            p.review_skip_reason AS review_skip_reason,
+            p.create_skip_cat AS create_skip_cat,
+            p.review_skip_cat AS review_skip_cat,
+            r.id AS response_id,
+            r.response_text AS response,
+            CASE
+                WHEN p.phase = 'review' THEN rr.score
+                ELSE lr.score
+            END AS response_score,
+            j.id AS judgement_id,
+            j.rubric AS judgement_rubric,
+            j.score AS judger_1_score,
+            j.reason AS judger_1_response,
+            CASE
+                WHEN p.phase = 'review' THEN rj.score
+                ELSE lj.score
+            END AS judger_1_updated_score,
+            CASE
+                WHEN p.phase = 'review' THEN rj.reason
+                ELSE lj.reason
+            END AS judger_1_updated_response,
+            j2.id AS judgement_id_2,
+            j2.rubric AS judgement_rubric_2,
+            j2.score AS judger_2_score,
+            j2.reason AS judger_2_response,
+            CASE
+                WHEN p.phase = 'review' THEN rj2.score
+                ELSE lj2.score
+            END AS judger_2_updated_score,
+            CASE
+                WHEN p.phase = 'review' THEN rj2.reason
+                ELSE lj2.reason
+            END AS judger_2_updated_response
+        FROM
+            prompts p
+        LEFT JOIN
+            responses r ON p.id = r.prompt_id
+        LEFT JOIN
+            labelled_responses lr ON r.id = lr.response_id
+        LEFT JOIN
+            reviewed_responses rr ON r.id = rr.response_id
+        LEFT JOIN
+            judgements j ON r.id = j.response_id
+        LEFT JOIN
+            labelled_judgements lj ON j.id = lj.judgement_id
+        LEFT JOIN
+            reviewed_judgements rj ON j.id = rj.judgement_id
+        LEFT JOIN
+            judgements j2 ON r.id = j2.response_id AND j2.id != j.id
+        LEFT JOIN
+            labelled_judgements lj2 ON j2.id = lj2.judgement_id
+        LEFT JOIN
+            reviewed_judgements rj2 ON j2.id = rj2.judgement_id
+        LEFT JOIN
+            files f ON p.file_id = f.id
+        WHERE
+            p.phase IN ('create', 'review')
+        AND
+            (p.status = 'done' OR (p.status = 'skip' AND p.phase = 'review'))
+        AND
+            f.filename = %s
+        ORDER BY
+            p.id, r.id, j.id;
+    """, (filename,))
+    return cur.fetchall()
+
+def organize_data(rows, expected_fields):
+    data = {}
+    for row in rows:
+        (
+            line_id, question, create_skip_reason, review_skip_reason,
+            create_skip_cat, review_skip_cat, response_id, response_text,
+            response_score, judgement_id, judgement_rubric, judger_1_score,
+            judger_1_response, judger_1_updated_score, judger_1_updated_response,
+            judgement_id_2, judgement_rubric_2, judger_2_score, judger_2_response,
+            judger_2_updated_score, judger_2_updated_response
+        ) = row
+
+        if line_id not in data:
+            data[line_id] = {
+                "line_id": line_id,
+                "question": question,
+                "responses": [],
+                "scores": [],
+                "is_skip": bool(review_skip_cat),
+                "is_skip_reason": f"{review_skip_cat or ''}: {review_skip_reason or ''}".strip(", ") if review_skip_cat else "",
+                "judger_responses": []
+            }
+
+        judgement_entry = {
+            "question": question,
+            "response": response_text,
+            "rubric": judgement_rubric,
+            "judger_1_score": judger_1_score,
+            "judger_1_response": judger_1_response,
+            "judger_1_updated_score": judger_1_updated_score,
+            "judger_1_updated_response": judger_1_updated_response,
+            "judger_2_score": judger_2_score,
+            "judger_2_response": judger_2_response,
+            "judger_2_updated_score": judger_2_updated_score,
+            "judger_2_updated_response": judger_2_updated_response,
+            "is_skip": bool(review_skip_cat),
+            "is_skip_reason": f"{review_skip_cat or ''}: {review_skip_reason or ''}".strip(", ") if review_skip_cat else "",
+        }
+        x = True
+
+        for jud in data[line_id]["judger_responses"]:
+            if jud['response'] == judgement_entry['response']:
+                x = False
+                break
+        if x:
+            data[line_id]["judger_responses"].append(judgement_entry)
+
+        if response_text not in data[line_id]["responses"]:
+            data[line_id]["responses"].append(response_text)
+            data[line_id]["scores"].append(response_score)
+
+    return data if len(data.keys()) == expected_fields else None
+
+def write_to_jsonl(filename, data):
+    with open(f"{filename}", "w") as f:
+        for entry in data.values():
+            
+            json.dump(entry, f)
+            f.write('\n')
+
+def export_to_jsonl(filenames):
     try:
-        # Connect to the PostgreSQL database
+        if filenames is None:
+            gr.Warning('No File Selected')
         conn = get_db_connection()
-        # Create a cursor to perform database operations
         cur = conn.cursor()
-        cur.execute("SELECT filename FROM files;")
-        filenames = cur.fetchall()
 
+        # filenames = fetch_filenames(cur)
 
-        for filename_tuple in filenames:
-            filename = filename_tuple[0]
-            cur.execute("SELECT COUNT(*) FROM prompts WHERE file_id = (SELECT id FROM files WHERE filename = %s)", (filename,))
-            expected_fields = cur.fetchone()[0]
+        for filename in filenames:
+            expected_fields = fetch_expected_fields(cur, filename)
+            rows = fetch_data(cur, filename)
+            data = organize_data(rows, expected_fields)
 
-            # Query data from the database
-            cur.execute("""
-                SELECT
-                    p.id AS line_id,
-                    p.prompt_text AS question,
-                    p.create_skip_reason AS create_skip_reason,
-                    p.review_skip_reason AS review_skip_reason,
-                    p.create_skip_cat AS create_skip_cat,
-                    p.review_skip_cat AS review_skip_cat,
-                    r.id AS response_id,
-                    r.response_text AS response,
-                    CASE
-                        WHEN p.phase = 'review' THEN rr.score
-                        ELSE lr.score
-                    END AS response_score,
-                    j.id AS judgement_id,
-                    j.rubric AS judgement_rubric,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj.score
-                        ELSE lj.score
-                    END AS judger_1_score,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj.reason
-                        ELSE lj.reason
-                    END AS judger_1_response,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj.score
-                        ELSE lj.score
-                    END AS judger_1_updated_score,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj.reason
-                        ELSE lj.reason
-                    END AS judger_1_updated_response,
-                    j2.id AS judgement_id_2,
-                    j2.rubric AS judgement_rubric_2,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj2.score
-                        ELSE lj2.score
-                    END AS judger_2_score,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj2.reason
-                        ELSE lj2.reason
-                    END AS judger_2_response,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj2.score
-                        ELSE lj2.score
-                    END AS judger_2_updated_score,
-                    CASE
-                        WHEN p.phase = 'review' THEN rj2.reason
-                        ELSE lj2.reason
-                    END AS judger_2_updated_response
-                FROM
-                    prompts p
-                LEFT JOIN
-                    responses r ON p.id = r.prompt_id
-                LEFT JOIN
-                    labelled_responses lr ON r.id = lr.response_id
-                LEFT JOIN
-                    reviewed_responses rr ON r.id = rr.response_id
-                LEFT JOIN
-                    judgements j ON r.id = j.response_id
-                LEFT JOIN
-                    labelled_judgements lj ON j.id = lj.judgement_id
-                LEFT JOIN
-                    reviewed_judgements rj ON j.id = rj.judgement_id
-                LEFT JOIN
-                    judgements j2 ON r.id = j2.response_id AND j2.id != j.id
-                LEFT JOIN
-                    labelled_judgements lj2 ON j2.id = lj2.judgement_id
-                LEFT JOIN
-                    reviewed_judgements rj2 ON j2.id = rj2.judgement_id
-                LEFT JOIN
-                    files f ON p.file_id = f.id
-                WHERE
-                    p.phase IN ('create', 'review')
-                AND
-                    (p.status = 'done' OR (p.status = 'skip' and p.phase= 'review'))
-                AND
-                    f.filename = %s
-                ORDER BY
-                    p.id, r.id, j.id;
-            """, (filename,))
-
-            # Fetch all rows
-            rows = cur.fetchall()
-
-            if rows and len(rows[0]) != expected_fields:
-                gr.Info(f"Skipping file {filename} due to unexpected data length.")
-                continue
-
-
-            # Organize data by line_id
-            data = {}
-            for row in rows:
-                line_id = row[0]
-                question = row[1]
-                create_skip_reason = row[2]
-                review_skip_reason = row[3]
-                create_skip_cat = row[4]
-                review_skip_cat = row[5]
-                response_id = row[6]
-                response_text = row[7]
-                response_score = row[8]
-                judgement_id = row[9]
-                judgement_rubric = row[10]
-                judger_1_score = row[11]
-                judger_1_response = row[12]
-                judger_1_updated_score = row[13]
-                judger_1_updated_response = row[14]
-                judgement_id_2 = row[15]
-                judgement_rubric_2 = row[16]
-                judger_2_score = row[17]
-                judger_2_response = row[18]
-                judger_2_updated_score = row[19]
-                judger_2_updated_response = row[20]
-
-                if line_id not in data:
-                    data[line_id] = {
-                        "line_id": line_id,
-                        "question": question,
-                        "responses": [],
-                        "scores": [],
-                        "is_skip": False,
-                        "is_skip_reason": "",
-                        "judger_responses": []
-                    }
-
-                if create_skip_reason or review_skip_reason:
-                    data[line_id]["is_skip"] = True
-                    data[line_id]["is_skip_reason"] = f"{create_skip_cat or ''}: {create_skip_reason or ''}, {review_skip_cat or ''}: {review_skip_reason or ''}".strip(", ")
-
-                if response_id not in [resp["response_id"] for resp in data[line_id]["responses"]]:
-                    data[line_id]["responses"].append(response_text)
-                    data[line_id]["scores"].append(response_score)
-
-                judger_responses = {
-                    "question": question,
-                    "response": response_text,
-                    "rubric": judgement_rubric,
-                    "judger 1 score": judger_1_score,
-                    "judger 1 response": judger_1_response,
-                    "judger 1 updated score": judger_1_updated_score,
-                    "judger 1 updated response": judger_1_updated_response,
-                    "judger 2 score": judger_2_score,
-                    "judger 2 response": judger_2_response,
-                    "judger 2 updated score": judger_2_updated_score,
-                    "judger 2 updated response": judger_2_updated_response,
-                    "is_skip": data[line_id]["is_skip"],
-                    "is_skip_reason": data[line_id]["is_skip_reason"]
-                }
-                data[line_id]["judger_responses"].append(judger_responses)
-
-            # Write data to JSONL file
-            with open(f"{filename}", "w") as f:
-                for entry in data.values():
-                    json.dump(entry, f)
-                    f.write('\n')
-
-            print(f"Data exported to {filename} successfully.")
+            if data:
+                write_to_jsonl(filename, data)
+                print(f"Data exported to {filename} successfully.")
+            else:
+                gr.Warning(f'Skipping {filename} due to incomplete labelling!')
+                print(f"Expected {expected_fields} fields, but got {len(data.keys())} for {filename}")
 
     except Exception as e:
         print(f"An error occurred: {e}")
@@ -1098,9 +1116,10 @@ def export_to_jsonl():
             cur.close()
             conn.close()
             print("Database connection closed.")
-# Usage example
-# export_to_jsonl()
+            file_paths = [os.path.abspath(filename) for filename in filenames]
+            return file_paths
 
+# Usage example
 
 
 def update_prompt_status_in_db(prompt_id, user_task):
@@ -1417,13 +1436,21 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         inputs=[new_username, new_password, new_role],
                         outputs=None
                     )
-            with gr.Row():
-                create_button = gr.Button("export Files")
+            with gr.Column():
+                with gr.Row():
+                    files_to_export = gr.Dropdown(choices = [], multiselect=True, label='Files to Export')
+                tabs.change(
+                    fn=fetch_filenames,
+                    inputs=None,
+                    outputs=files_to_export
+                )
+                with gr.Row():
+                    create_button = gr.Button("Export Files")
             with gr.Row():
                 output_files = gr.Files(label='Exported files')
-                files = gr.Files(label='upload files',file_types=['.jsonl'])
+                files = gr.Files(label='Upload files',file_types=['.jsonl'])
 
-            create_button.click(export_to_jsonl, inputs=None, outputs=output_files)
+            create_button.click(export_to_jsonl, inputs=files_to_export, outputs=output_files)
             def show_logout(btn):
                 return gr.Button(visible=True)
             tabs.change(
