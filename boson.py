@@ -1,3 +1,161 @@
+
+import psycopg2
+from psycopg2 import sql
+
+def get_db_connection():
+    return psycopg2.connect(
+        dbname="boson",
+        user="ubuntu",
+        password="Ddd@1234",  # Replace with your password
+        host="localhost"
+    )
+
+
+
+def setup_database():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Drop existing tables
+    cur.execute("""
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
+                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """)
+
+    # Drop existing functions
+    cur.execute("""
+        DO $$ DECLARE
+            r RECORD;
+        BEGIN
+            FOR r IN (SELECT routine_name FROM information_schema.routines WHERE routine_type='FUNCTION' AND specific_schema = current_schema()) LOOP
+                EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.routine_name) || ' CASCADE';
+            END LOOP;
+        END $$;
+    """)
+
+    # Create users table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password VARCHAR(50) NOT NULL,
+            user_role VARCHAR(50) NOT NULL
+        )
+    """)
+
+    # Insert test data
+    cur.execute("""
+        INSERT INTO users (username, password, user_role) VALUES
+        ('creator1', 'password1', 'creator'),
+        ('creator2', 'password2', 'creator'),
+        ('reviewer1', 'password3', 'reviewer'),
+        ('admin', 'admin', 'admin')
+        ON CONFLICT (username) DO NOTHING
+    """)
+
+    # Create files table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS files (
+            id SERIAL PRIMARY KEY,
+            filename VARCHAR(255) UNIQUE NOT NULL
+        )
+    """)
+
+    # Create prompts table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS prompts (
+            id SERIAL PRIMARY KEY,
+            line_id INTEGER,
+            prompt_text TEXT NOT NULL,
+            domain VARCHAR(255),
+            task VARCHAR(255),
+            meta_data JSONB,
+            phase VARCHAR(20),
+            status VARCHAR(20),
+            file_id INTEGER REFERENCES files(id),
+            create_user VARCHAR(20),
+            review_user VARCHAR(20),
+            create_start_time TIMESTAMP,
+            create_end_time TIMESTAMP,
+            create_skip_reason TEXT,
+            create_skip_cat TEXT,
+            review_skip_reason TEXT,
+            review_skip_cat TEXT,
+            review_start_time TIMESTAMP,
+            review_end_time TIMESTAMP
+        )
+    """)
+
+    # Create responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS responses (
+            id SERIAL PRIMARY KEY,
+            prompt_id INTEGER REFERENCES prompts(id),
+            response_text TEXT NOT NULL
+        )
+    """)
+
+    # Create judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS judgements (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER REFERENCES responses(id),
+            reason TEXT,
+            rubric TEXT,
+            score INTEGER
+        )
+    """)
+
+    # Create labelled_responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS labelled_responses (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER UNIQUE REFERENCES responses(id),
+            score INTEGER
+        )
+    """)
+
+    # Create labelled_judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS labelled_judgements (
+            id SERIAL PRIMARY KEY,
+            judgement_id INTEGER UNIQUE REFERENCES judgements(id),
+            reason TEXT,
+            score INTEGER
+        )
+    """)
+
+    # Create reviewed_responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_responses (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER REFERENCES responses(id),
+            score INTEGER
+        )
+    """)
+
+    # Create reviewed_judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_judgements (
+            id SERIAL PRIMARY KEY,
+            judgement_id INTEGER REFERENCES judgements(id),
+            reason TEXT,
+            score INTEGER
+        )
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+setup_database()
+print("Database setup complete.")
+
+
 from pickle import NONE
 
 import psycopg2
@@ -326,6 +484,7 @@ CREATE OR REPLACE FUNCTION insert_file_data(p_filename TEXT, p_data JSONB)
 RETURNS TEXT AS $$
 DECLARE
     file_id INT;
+    line_id INT;
     prompt_id INT;
     response_id INT;
     prompt_data JSONB;
@@ -356,8 +515,9 @@ BEGIN
         prompt_data := p_data->i;
 
         -- Insert into prompts table with truncated values
-        INSERT INTO prompts (prompt_text, domain, task, meta_data, phase, status, file_id)
+        INSERT INTO prompts (line_id, prompt_text, domain, task, meta_data, phase, status, file_id)
         VALUES (
+            (i+1)::INTEGER,  -- Assuming you want to use (i+1) as the line_id
             prompt_data->>'prompt',
             (prompt_data->'meta'->>'prompt_domain')::TEXT,
             (prompt_data->'meta'->>'prompt_task')::TEXT,
@@ -367,6 +527,7 @@ BEGIN
             file_id
         )
         RETURNING id INTO prompt_id;
+
 
         -- Get the length of the responses array
         responses_length := COALESCE(jsonb_array_length(prompt_data->'responses'), 0);
@@ -931,11 +1092,11 @@ def fetch_filenames():
         FROM files f
         LEFT JOIN prompts p ON f.id = p.file_id
         GROUP BY f.filename
-        HAVING COUNT(*) = SUM(CASE 
-                                WHEN p.phase IN ('create', 'review') 
-                                    AND (p.status = 'done' OR (p.status = 'skip' AND p.phase = 'review')) 
-                                THEN 1 
-                                ELSE 0 
+        HAVING COUNT(*) = SUM(CASE
+                                WHEN p.phase IN ('create', 'review')
+                                    AND (p.status = 'done' OR (p.status = 'skip' AND p.phase = 'review'))
+                                THEN 1
+                                ELSE 0
                               END);
 
     """)
@@ -945,8 +1106,8 @@ def fetch_filenames():
     if not filenames:
         gr.Warning('No File Labelled till now!')
     return gr.Dropdown(choices = [filename[0] for filename in filenames], multiselect=True, label='Files to Export')
-    
-    
+
+
 def fetch_expected_fields(cur, filename):
     cur.execute("""
         SELECT COUNT(*)
@@ -958,7 +1119,7 @@ def fetch_expected_fields(cur, filename):
 def fetch_data(cur, filename):
     cur.execute("""
         SELECT
-            p.id AS line_id,
+            p.line_id AS line_id,
             p.prompt_text AS question,
             p.create_skip_reason AS create_skip_reason,
             p.review_skip_reason AS review_skip_reason,
@@ -966,34 +1127,19 @@ def fetch_data(cur, filename):
             p.review_skip_cat AS review_skip_cat,
             r.id AS response_id,
             r.response_text AS response,
-            CASE
-                WHEN p.phase = 'review' THEN rr.score
-                ELSE lr.score
-            END AS response_score,
+            lr.score response_score,
             j.id AS judgement_id,
             j.rubric AS judgement_rubric,
             j.score AS judger_1_score,
             j.reason AS judger_1_response,
-            CASE
-                WHEN p.phase = 'review' THEN rj.score
-                ELSE lj.score
-            END AS judger_1_updated_score,
-            CASE
-                WHEN p.phase = 'review' THEN rj.reason
-                ELSE lj.reason
-            END AS judger_1_updated_response,
+            lj.score AS judger_1_updated_score,
+            lj.reason AS judger_1_updated_response,
             j2.id AS judgement_id_2,
             j2.rubric AS judgement_rubric_2,
             j2.score AS judger_2_score,
             j2.reason AS judger_2_response,
-            CASE
-                WHEN p.phase = 'review' THEN rj2.score
-                ELSE lj2.score
-            END AS judger_2_updated_score,
-            CASE
-                WHEN p.phase = 'review' THEN rj2.reason
-                ELSE lj2.reason
-            END AS judger_2_updated_response
+            lj2.score AS judger_2_updated_score,
+            lj2.reason AS judger_2_updated_response
         FROM
             prompts p
         LEFT JOIN
@@ -1083,7 +1229,7 @@ def organize_data(rows, expected_fields):
 def write_to_jsonl(filename, data):
     with open(f"{filename}", "w") as f:
         for entry in data.values():
-            
+
             json.dump(entry, f)
             f.write('\n')
 
