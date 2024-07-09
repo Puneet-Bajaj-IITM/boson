@@ -1,161 +1,3 @@
-
-import psycopg2
-from psycopg2 import sql
-
-def get_db_connection():
-    return psycopg2.connect(
-        dbname="boson",
-        user="ubuntu",
-        password="Ddd@1234",  # Replace with your password
-        host="localhost"
-    )
-
-
-
-def setup_database():
-    conn = get_db_connection()
-    cur = conn.cursor()
-
-    # Drop existing tables
-    cur.execute("""
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
-                EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """)
-
-    # Drop existing functions
-    cur.execute("""
-        DO $$ DECLARE
-            r RECORD;
-        BEGIN
-            FOR r IN (SELECT routine_name FROM information_schema.routines WHERE routine_type='FUNCTION' AND specific_schema = current_schema()) LOOP
-                EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.routine_name) || ' CASCADE';
-            END LOOP;
-        END $$;
-    """)
-
-    # Create users table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(50) UNIQUE NOT NULL,
-            password VARCHAR(50) NOT NULL,
-            user_role VARCHAR(50) NOT NULL
-        )
-    """)
-
-    # Insert test data
-    cur.execute("""
-        INSERT INTO users (username, password, user_role) VALUES
-        ('creator1', 'password1', 'creator'),
-        ('creator2', 'password2', 'creator'),
-        ('reviewer1', 'password3', 'reviewer'),
-        ('admin', 'admin', 'admin')
-        ON CONFLICT (username) DO NOTHING
-    """)
-
-    # Create files table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS files (
-            id SERIAL PRIMARY KEY,
-            filename VARCHAR(255) UNIQUE NOT NULL
-        )
-    """)
-
-    # Create prompts table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS prompts (
-            id SERIAL PRIMARY KEY,
-            line_id INTEGER,
-            prompt_text TEXT NOT NULL,
-            domain VARCHAR(255),
-            task VARCHAR(255),
-            meta_data JSONB,
-            phase VARCHAR(20),
-            status VARCHAR(20),
-            file_id INTEGER REFERENCES files(id),
-            create_user VARCHAR(20),
-            review_user VARCHAR(20),
-            create_start_time TIMESTAMP,
-            create_end_time TIMESTAMP,
-            create_skip_reason TEXT,
-            create_skip_cat TEXT,
-            review_skip_reason TEXT,
-            review_skip_cat TEXT,
-            review_start_time TIMESTAMP,
-            review_end_time TIMESTAMP
-        )
-    """)
-
-    # Create responses table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS responses (
-            id SERIAL PRIMARY KEY,
-            prompt_id INTEGER REFERENCES prompts(id),
-            response_text TEXT NOT NULL
-        )
-    """)
-
-    # Create judgements table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS judgements (
-            id SERIAL PRIMARY KEY,
-            response_id INTEGER REFERENCES responses(id),
-            reason TEXT,
-            rubric TEXT,
-            score INTEGER
-        )
-    """)
-
-    # Create labelled_responses table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS labelled_responses (
-            id SERIAL PRIMARY KEY,
-            response_id INTEGER UNIQUE REFERENCES responses(id),
-            score INTEGER
-        )
-    """)
-
-    # Create labelled_judgements table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS labelled_judgements (
-            id SERIAL PRIMARY KEY,
-            judgement_id INTEGER UNIQUE REFERENCES judgements(id),
-            reason TEXT,
-            score INTEGER
-        )
-    """)
-
-    # Create reviewed_responses table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS reviewed_responses (
-            id SERIAL PRIMARY KEY,
-            response_id INTEGER REFERENCES responses(id),
-            score INTEGER
-        )
-    """)
-
-    # Create reviewed_judgements table
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS reviewed_judgements (
-            id SERIAL PRIMARY KEY,
-            judgement_id INTEGER REFERENCES judgements(id),
-            reason TEXT,
-            score INTEGER
-        )
-    """)
-
-    conn.commit()
-    cur.close()
-    conn.close()
-setup_database()
-print("Database setup complete.")
-
-
 from pickle import NONE
 
 import psycopg2
@@ -169,7 +11,95 @@ def get_db_connection():
         host="localhost"
     )
 
+def get_project_summary(from_day, from_month, from_year, to_day, to_month, to_year):
+    # Define the date range
+    from_date = f"{from_year}-{from_month}-{from_day}"
+    to_date = f"{to_year}-{to_month}-{to_day}"
+    if from_date > to_date:
+        gr.Warning('Invalid Range Selected!')
 
+    # Define the SQL query
+    query = f"""
+    SELECT review_skip_cat, COUNT(*) as total_prompts
+    FROM prompts
+    WHERE review_start_time >= '{from_date}' AND review_start_time<= '{to_date}'
+    GROUP BY review_skip_cat
+    """
+
+    # Connect to the PostgreSQL database
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(query)
+        result = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+        return pd.DataFrame({'Skip Category': [], 'Total Prompts': []})
+
+    # Prepare the data for the DataFrame
+    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip']
+    total_prompts = {category: 0 for category in categories}
+
+    for row in result:
+        category, count = row
+        if category in total_prompts:
+            total_prompts[category] = count
+
+    # Create the DataFrame
+    df = pd.DataFrame({
+        'Skip Category': categories,
+        'Total Prompts': [total_prompts[category] for category in categories]
+    })
+
+    return df
+
+def initialize_p_summary():
+    # Define the SQL query
+    query = f"""
+    SELECT review_skip_cat, COUNT(*) as total_prompts
+    FROM prompts
+    GROUP BY review_skip_cat
+    """
+
+    # Connect to the PostgreSQL database
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(query)
+        result = cur.fetchall()
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+        return pd.DataFrame({'Skip Category': [], 'Total Prompts': []})
+
+    # Prepare the data for the DataFrame
+    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip']
+    total_prompts = {category: 0 for category in categories}
+
+    for row in result:
+        category, count = row
+        if category in total_prompts:
+            total_prompts[category] = count
+
+    # Create the DataFrame
+    df = pd.DataFrame({
+        'Skip Category': categories,
+        'Total Prompts': [total_prompts[category] for category in categories]
+    })
+
+    return df
+
+# Generate list of months
+months = [f"{month:02d}" for month in range(1, 13)]
+
+# Generate list of days
+days = [f"{day:02d}" for day in range(1, 32)]
+
+# Generate list of years (example range: 1900 to 2100)
+years = [str(year) for year in range(2024, 2051)]
 
 def insert_file_data(filename, data):
     try:
@@ -202,6 +132,96 @@ def insert_file_data(filename, data):
             cur.close()
         if conn:
             conn.close()
+
+
+def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
+    # Define the date range
+    from_date = f'{from_year}-{from_month}-{from_day}'
+    to_date = f'{to_year}-{to_month}-{to_day}'
+
+    if from_date > to_date:
+        gr.Warning('Invalid Range Selected!')
+      
+
+    # Initialize an empty list to store data
+    data = []
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Call the stored procedure using CALL
+        cur.execute("SELECT * FROM get_pro_report(%s::TIMESTAMP, %s::TIMESTAMP)", (from_date, to_date))
+
+        # Fetch all results
+        results = cur.fetchall()
+
+        if results:
+            # Process each row and append to data list
+            for row in results:
+                data.append({
+                    'User Name': row[0],
+                    'Completed Date': row[1],
+                    'JSON File Name': row[2],
+                    'Task': row[3],
+                    'Rating Average': row[4],
+                    'Total Record Skipped': row[5],
+                    'Total Record Completed': row[6],
+                    'Duration (Min)': row[7]
+                })
+
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+
+    finally:
+        # Ensure cursor and connection are closed even if an error occurs
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # Convert list of dictionaries to DataFrame
+    if data == []:
+        gr.Warning('No Data Found')
+    df = pd.DataFrame(data)
+    return df
+
+
+import psycopg2
+import pandas as pd
+
+def initialize_pro_report():
+    df = pd.DataFrame(columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
+                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
+                               'Duration (Min)'])
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Execute the DO block to call the stored procedure and capture output
+        cur.execute('SELECT * FROM initialize_pro_report()')
+
+        # Fetch all results from the cursor
+        result = cur.fetchall()
+
+        if result:
+            # Convert result to DataFrame
+            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
+                                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
+                                               'Duration (Min)'])
+
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+
+    finally:
+        # Ensure cursor and connection are closed even if an error occurs
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    return df
 
 
 
@@ -1373,6 +1393,326 @@ import psycopg2
 from psycopg2 import sql
 import datetime
 
+pro_report_func = """
+CREATE OR REPLACE FUNCTION get_pro_report(
+    from_date TIMESTAMP,
+    to_date TIMESTAMP
+)
+RETURNS TABLE (
+    user_name VARCHAR(50),
+    completed_date TIMESTAMP,
+    json_file_name VARCHAR(255),
+    task VARCHAR(10),
+    rating_average NUMERIC,
+    total_record_skipped BIGINT,
+    total_record_completed BIGINT,
+    duration_min NUMERIC
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Query for create phase
+    RETURN QUERY
+    SELECT
+        p.create_user,
+        p.create_end_time,
+        f.filename,
+        'create'::VARCHAR(10),
+        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
+        SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
+        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
+        EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    LEFT JOIN labelled_responses lr ON p.id = lr.response_id
+    LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
+    WHERE p.phase = 'create'
+        AND p.create_user IS NOT NULL
+        AND p.create_user <> ''
+        AND p.create_start_time >= from_date 
+        AND p.create_end_time <= to_date
+    GROUP BY p.create_user, p.create_end_time, f.filename, p.create_start_time;
+
+    -- Query for review phase
+    RETURN QUERY
+    SELECT
+        p.review_user,
+        p.review_end_time,
+        f.filename,
+        'review'::VARCHAR(10),
+        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
+        SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
+        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
+        EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    LEFT JOIN labelled_responses lr ON p.id = lr.response_id
+    LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
+    WHERE p.phase = 'review'
+        AND p.review_user IS NOT NULL
+        AND p.review_user <> ''
+        AND p.review_start_time >= from_date 
+        AND p.review_end_time <= to_date
+    GROUP BY p.review_user, p.review_end_time, f.filename, p.review_start_time;
+END;
+$$;
+
+
+"""
+initialize_pro_report_func = """
+CREATE OR REPLACE FUNCTION initialize_pro_report()
+RETURNS TABLE (
+    user_name VARCHAR(50),
+    completed_date TIMESTAMP,
+    json_file_name VARCHAR(255),
+    task VARCHAR(10),
+    rating_average NUMERIC,
+    total_record_skipped BIGINT,
+    total_record_completed BIGINT,
+    duration_min NUMERIC
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    -- Query for create phase
+    RETURN QUERY
+    SELECT
+        p.create_user,
+        p.create_end_time,
+        f.filename,
+        'create'::VARCHAR(10),
+        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
+        SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
+        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
+        EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    LEFT JOIN labelled_responses lr ON p.id = lr.response_id
+    LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
+    WHERE p.phase = 'create'
+        AND p.create_user IS NOT NULL
+        AND p.create_user <> ''
+    GROUP BY p.create_user, p.create_end_time, f.filename, p.create_start_time;
+
+    -- Query for review phase
+    RETURN QUERY
+    SELECT
+        p.review_user,
+        p.review_end_time,
+        f.filename,
+        'review'::VARCHAR(10),
+        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
+        SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
+        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
+        EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    LEFT JOIN labelled_responses lr ON p.id = lr.response_id
+    LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
+    WHERE p.phase = 'review'
+        AND p.review_user IS NOT NULL
+        AND p.review_user <> ''
+    GROUP BY p.review_user, p.review_end_time, f.filename, p.review_start_time;
+END;
+$$;
+
+
+"""
+create_stored_procedure(pro_report_func)
+
+create_stored_procedure(initialize_pro_report_func)
+
+dashboard_proc = """
+CREATE OR REPLACE FUNCTION get_dashboard(
+    from_date TIMESTAMP,
+    to_date TIMESTAMP
+)
+RETURNS TABLE (
+    v_json_file_name TEXT,
+    v_total_records BIGINT,
+    v_completed BIGINT,
+    v_skipped BIGINT,
+    v_create_wip BIGINT,
+    v_create_yts BIGINT,
+    v_review_yts BIGINT,
+    v_review_wip BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH temp_dashboard AS (
+        SELECT
+            f.filename AS "JSON File Name",
+            COUNT(p.id) AS "Total Records",
+            SUM(CASE WHEN p.status = 'done' THEN 1 ELSE 0 END) AS "Completed",
+            SUM(CASE WHEN p.status = 'skip' THEN 1 ELSE 0 END) AS "Skipped",
+            SUM(CASE WHEN p.status = 'wip' AND p.phase = 'create' THEN 1 ELSE 0 END) AS "Create WIP",
+            SUM(CASE WHEN p.status = 'yts' AND p.phase = 'create' THEN 1 ELSE 0 END) AS "Create YTS",
+            SUM(CASE WHEN p.status = 'yts' AND p.phase = 'review' THEN 1 ELSE 0 END) AS "Review YTS",
+            SUM(CASE WHEN p.status = 'wip' AND p.phase = 'review' THEN 1 ELSE 0 END) AS "Review WIP"
+        FROM prompts p
+        JOIN files f ON p.file_id = f.id
+        WHERE p.create_start_time >= from_date AND p.create_end_time <= to_date
+           OR p.review_start_time >= from_date AND p.review_end_time <= to_date
+        GROUP BY f.filename
+    )
+    SELECT
+        "JSON File Name"::TEXT,
+        "Total Records"::BIGINT,
+        "Completed"::BIGINT,
+        "Skipped"::BIGINT,
+        "Create WIP"::BIGINT,
+        "Create YTS"::BIGINT,
+        "Review YTS"::BIGINT,
+        "Review WIP"::BIGINT
+    FROM temp_dashboard
+    ORDER BY "JSON File Name";
+END;
+$$;
+
+"""
+
+initialize_dashboard = """
+CREATE OR REPLACE FUNCTION initialize_dashboard()
+RETURNS TABLE (
+    v_json_file_name TEXT,
+    v_total_records BIGINT,
+    v_completed BIGINT,
+    v_skipped BIGINT,
+    v_create_wip BIGINT,
+    v_create_yts BIGINT,
+    v_review_yts BIGINT,
+    v_review_wip BIGINT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    WITH temp_dashboard AS (
+        SELECT
+            f.filename AS "JSON File Name",
+            COUNT(p.id) AS "Total Records",
+            SUM(CASE WHEN p.status = 'done' THEN 1 ELSE 0 END) AS "Completed",
+            SUM(CASE WHEN p.status = 'skip' THEN 1 ELSE 0 END) AS "Skipped",
+            SUM(CASE WHEN p.status = 'wip' AND p.phase = 'create' THEN 1 ELSE 0 END) AS "Create WIP",
+            SUM(CASE WHEN p.status = 'yts' AND p.phase = 'create' THEN 1 ELSE 0 END) AS "Create YTS",
+            SUM(CASE WHEN p.status = 'yts' AND p.phase = 'review' THEN 1 ELSE 0 END) AS "Review YTS",
+            SUM(CASE WHEN p.status = 'wip' AND p.phase = 'review' THEN 1 ELSE 0 END) AS "Review WIP"
+        FROM prompts p
+        JOIN files f ON p.file_id = f.id
+        GROUP BY f.filename
+    )
+    SELECT
+        "JSON File Name"::TEXT,
+        "Total Records"::BIGINT,
+        "Completed"::BIGINT,
+        "Skipped"::BIGINT,
+        "Create WIP"::BIGINT,
+        "Create YTS"::BIGINT,
+        "Review YTS"::BIGINT,
+        "Review WIP"::BIGINT
+    FROM temp_dashboard
+    ORDER BY "JSON File Name";
+
+    -- Optionally, you can drop the temporary table here, but it's not necessary
+    -- DROP TABLE IF EXISTS temp_dashboard;
+END;
+$$;
+
+"""
+
+create_stored_procedure(dashboard_proc)
+create_stored_procedure(initialize_dashboard)
+import psycopg2
+import pandas as pd
+from datetime import datetime
+
+def get_dashboard(from_day, from_month, from_year, to_day, to_month, to_year):
+    # Define the date range
+    from_date = f'{from_year}-{from_month}-{from_day}'
+    to_date = f'{to_year}-{to_month}-{to_day}'
+
+    if from_date > to_date:
+        gr.Warning('Invalid Range Selected!')
+
+    # Connect to the PostgreSQL database
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Call the stored procedure
+        cur.execute('SELECT * FROM get_dashboard(%s::TIMESTAMP, %s::TIMESTAMP)', (from_date, to_date))
+
+        # Fetch all results
+        columns = ['JSON File Name', 'Total Records', 'Completed','Skipped', 'Create WIP', 'Create YTS', 'Review YTS', 'Review WIP']
+        result = cur.fetchall()
+
+        cur.close()
+        conn.close()
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+        return pd.DataFrame({
+             'JSON File Name': [],
+             'Total Records': [],
+             'Completed': [],
+             'Skipped': [],
+             'Create WIP': [],
+             'Create YTS': [],
+             'Review YTS': [],
+             'Review WIP': []
+             })
+
+    # Create the DataFrame
+    if result == []:
+        gr.Warning('No Data Found')
+    df = pd.DataFrame(result, columns=columns)
+
+    return df
+
+
+# Function to execute the stored procedure and fetch results
+def initialize_dashboard():
+    conn = None
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Call the stored procedure
+        cur.execute('SELECT * FROM initialize_dashboard()')
+        result = cur.fetchall()
+        print(result)
+
+        # Close cursor and connection
+        cur.close()
+        conn.close()
+
+        # If result is not empty, convert to DataFrame
+        if result:
+            columns = ['JSON File Name', 'Total Records', 'Completed','Skipped', 'Create WIP', 'Create YTS', 'Review YTS', 'Review WIP']
+            df = pd.DataFrame(result, columns=columns)
+            return df
+        else:
+            print("Procedure returned no results.")
+            gr.Warning('No Data Found')
+            return pd.DataFrame({
+                'JSON File Name': [],
+                'Total Records': [],
+                'Completed': [],
+                'Skipped': [],
+                'Create WIP': [],
+                'Create YTS': [],
+                'Review YTS': [],
+                'Review WIP': [],
+                'Action': []
+            })
+
+    except psycopg2.Error as e:
+        print(f"Error executing stored procedure: {e}")
+        return None
+
+
+
 # Function to verify user credentials
 def verify_user(username, password):
     conn = get_db_connection()
@@ -1383,6 +1723,101 @@ def verify_user(username, password):
     cur.close()
     conn.close()
     return result is not None
+
+import psycopg2
+from datetime import datetime
+import pandas as pd
+
+
+def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
+    # Define the date range
+    from_date = f'{from_year}-{from_month}-{from_day}'
+    to_date = f'{to_year}-{to_month}-{to_day}'
+
+    if from_date > to_date:
+        gr.Warning('Invalid Range Selected!')
+      
+
+    # Initialize an empty list to store data
+    data = []
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Call the stored procedure using CALL
+        cur.execute("SELECT * FROM get_pro_report(%s::TIMESTAMP, %s::TIMESTAMP)", (from_date, to_date))
+
+        # Fetch all results
+        results = cur.fetchall()
+
+        if results:
+            # Process each row and append to data list
+            for row in results:
+                data.append({
+                    'User Name': row[0],
+                    'Completed Date': row[1],
+                    'JSON File Name': row[2],
+                    'Task': row[3],
+                    'Rating Average': row[4],
+                    'Total Record Skipped': row[5],
+                    'Total Record Completed': row[6],
+                    'Duration (Min)': row[7]
+                })
+
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+
+    finally:
+        # Ensure cursor and connection are closed even if an error occurs
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    # Convert list of dictionaries to DataFrame
+    if data == []:
+        gr.Warning('No Data Found')
+    df = pd.DataFrame(data)
+    return df
+
+
+import psycopg2
+import pandas as pd
+
+def initialize_pro_report():
+    df = pd.DataFrame(columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
+                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
+                               'Duration (Min)'])
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Execute the DO block to call the stored procedure and capture output
+        cur.execute('SELECT * FROM initialize_pro_report()')
+
+        # Fetch all results from the cursor
+        result = cur.fetchall()
+
+        if result:
+            # Convert result to DataFrame
+            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
+                                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
+                                               'Duration (Min)'])
+
+    except Exception as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+
+    finally:
+        # Ensure cursor and connection are closed even if an error occurs
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+
+    return df
+
 
 def login(username, password, user_task):
     if verify_user(username.lower(), password):
@@ -1514,7 +1949,180 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
     def refresh_user_info(username, task_name, filename):
         return gr.Markdown(update_user_info(username, task_name, filename), visible=True)
 
-    with gr.Tabs() as tabs:
+    with gr.Tabs() as tabs:  
+        with gr.Tab('Productivity Report', visible=False) as p_report:
+            with gr.Row():
+                gr.Markdown('FROM')
+                from_day_pr = gr.Dropdown(label='Day' ,choices=days)
+                from_month_pr = gr.Dropdown(label='Month', choices=months)
+                from_year_pr = gr.Dropdown(label='Year', choices=years)
+                gr.Markdown('TO')
+                to_day_pr = gr.Dropdown(label='Day', choices=days)
+                to_month_pr = gr.Dropdown(label='Month', choices=months)
+                to_year_pr = gr.Dropdown(label='Year', choices=years)
+                filter_btn_pr = gr.Button('Filter')
+
+                def show_filter(from_day, from_month, from_year, to_day, to_month, to_year):
+                    if from_day and from_month and from_year and to_day and to_month and to_year:
+                        return gr.Button(interactive=True)
+                    return gr.Button(interactive=False)
+                
+                from_day_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                to_day_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                to_month_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                to_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                from_month_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                from_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+
+            pro_report = gr.Dataframe(
+                headers=['User Name','Completed Date','JSON File Name','Task','Rating Average','Total Record Skipped','Total Record Completed', 'Duration (Min)'],
+                datatype=["str", "date", 'str', 'str', 'number', 'number', 'number', 'number'],
+                row_count=4,
+                col_count=(8, "fixed"),
+                interactive=False,
+                value=initialize_pro_report
+            )
+            filter_btn_pr.click(
+                    fn=get_pro_report,
+                    inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr],
+                    outputs=pro_report
+            )
+        with gr.Tab('Project Summary', visible=False) as p_summary:
+            with gr.Row():
+                gr.Markdown('FROM')
+                from_day_ps = gr.Dropdown(label='Day' ,choices=days)
+                from_month_ps = gr.Dropdown(label='Month', choices=months)
+                from_year_ps = gr.Dropdown(label='Year', choices=years)
+                gr.Markdown('TO')
+                to_day_ps = gr.Dropdown(label='Day', choices=days)
+                to_month_ps = gr.Dropdown(label='Month', choices=months)
+                to_year_ps = gr.Dropdown(label='Year', choices=years)
+                filter_btn_ps = gr.Button('Filter', interactive=False)
+                def show_filter(from_day, from_month, from_year, to_day, to_month, to_year):
+                    if from_day and from_month and from_year and to_day and to_month and to_year:
+                        return gr.Button(interactive=True)
+                    return gr.Button(interactive=False)
+                
+                from_day_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                to_day_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                to_month_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                to_year_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                from_month_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                from_year_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+
+
+
+            p_summary = gr.Dataframe(
+                headers=['Skip Category', 'Total Prompts'],
+                datatype=["str", "number"],
+                row_count=4,
+                col_count=(2, "fixed"),
+                interactive=False,
+                value=initialize_p_summary
+            )
+            filter_btn_ps.click(
+                    fn=get_project_summary,
+                    inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps],
+                    outputs=p_summary
+            )
+
+        with gr.Tab('Dashboard', visible=False) as dashboard:
+            with gr.Row():
+                gr.Markdown('FROM')
+                from_day_d = gr.Dropdown(label='Day' ,choices=days)
+                from_month_d = gr.Dropdown(label='Month', choices=months)
+                from_year_d = gr.Dropdown(label='Year', choices=years)
+                gr.Markdown('TO')
+                to_day_d = gr.Dropdown(label='Day', choices=days)
+                to_month_d = gr.Dropdown(label='Month', choices=months)
+                to_year_d = gr.Dropdown(label='Year', choices=years)
+                filter_btn_d = gr.Button('Filter', interactive=False)
+                from_day_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                to_day_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                to_month_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                to_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                from_month_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                from_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+
+            with gr.Row():
+                def get_files_to_archive():
+                    try:
+                        conn = get_db_connection()
+                        cur = conn.cursor()
+
+                        # Ensure archived_files table exists
+                        cur.execute("""
+                            CREATE TABLE IF NOT EXISTS archived_files (
+                                id SERIAL PRIMARY KEY,
+                                filename VARCHAR(255) UNIQUE NOT NULL
+                            )
+                        """)
+                        
+                        # Fetch filenames from files not in archived_files
+                        cur.execute("""
+                            SELECT filename 
+                            FROM files 
+                            WHERE filename NOT IN (SELECT filename FROM archived_files)
+                        """)
+                        files = cur.fetchall()
+                        print(files)
+                        
+                        cur.close()
+                        conn.commit()
+                        conn.close()
+                        
+                        files_to_archive = [f[0] for f in files]
+                        return gr.Dropdown(choices = files_to_archive, multiselect=True, label='Files to Archive')
+                    
+                    except Exception as e:
+                        print(f"Error retrieving files to archive: {e}")
+                        gr.Warning('No File to Archive')
+                        return []
+
+                files_to_archive = gr.Dropdown(choices = [], multiselect=True, label='Files to Archive')
+                tabs.change(
+                    fn=get_files_to_archive,
+                    inputs=[],
+                    outputs=files_to_archive
+                )
+                def archive_files(files):
+                    conn = get_db_connection()
+                    cur = conn.cursor()
+                    
+                    # Insert filenames into archived_files
+                    for filename in files:
+                        cur.execute("INSERT INTO archived_files (filename) VALUES (%s)", (filename,))
+                    
+                    conn.commit()
+                    cur.close()
+                    conn.close()
+                    
+                    gr.Info('Files archived successfully!')
+
+                archive_btn = gr.Button('Archive Files')
+                archive_btn.click(
+                    fn=archive_files,
+                    inputs=[files_to_archive],
+                    outputs=None
+                )
+
+                
+
+            dashboard = gr.Dataframe(
+                headers=['JSON File Name' ,'Total Records','Completed','Skipped','Create WIP','Create YTS','Review YTS','Review WIP'],
+                datatype=["str", "number", 'number', 'number', 'number', 'number', 'number', 'number'],
+                row_count=4,
+                col_count=(8, "fixed"),
+                interactive=False,
+                value=initialize_dashboard
+            )
+            filter_btn_d.click(
+                    fn=get_dashboard,
+                    inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d],
+                    outputs=dashboard
+            )
+            
+
 
         with gr.Tab('Admin', visible=False, id=10) as admin:
             with gr.Row(equal_height=True):
@@ -1684,9 +2292,9 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             )
             def show_admin(curr_username):
                 if curr_username.lower() == 'admin':
-                    return gr.Tabs(visible=True), gr.Tabs(selected=10)
-                return gr.Tabs(visible=False), gr.Tabs(selected=1)
-            curr_username.change(show_admin, curr_username, outputs=[admin, tabs])
+                    return gr.Tabs(visible=True),gr.Tabs(visible=True),gr.Tabs(visible=True),gr.Tabs(visible=True),  gr.Tabs(selected=10)
+                return gr.Tabs(visible=False),gr.Tabs(visible=False),gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(selected=1)
+            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, p_report, dashboard, tabs])
             def update_files(username, user_task):
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
@@ -1734,7 +2342,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     return gr.Tabs(selected=id), gr.Tabs(visible=True), gr.Tabs(visible=True), gr.Tabs(visible=True)
             curr_user_task.change(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
-            curr_username.change(show_admin, curr_username, outputs=[admin, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, p_report, dashboard, tabs])
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
 
 
