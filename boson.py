@@ -321,6 +321,129 @@ $$ LANGUAGE plpgsql;
 """
 create_stored_procedure(proc)
 import json
+
+info_d_func = """
+CREATE OR REPLACE FUNCTION get_release_info(
+    input_filenames TEXT[]
+)
+RETURNS TABLE (
+    prompt_id INTEGER,
+    user_name TEXT,
+    start_time TIMESTAMP,
+    end_time TIMESTAMP,
+    json_file_name VARCHAR(255),
+    task TEXT,
+    status TEXT,
+    skip_cat TEXT,
+    reason TEXT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.id AS prompt_id,
+        p.create_user::TEXT AS user_name,
+        p.create_start_time,
+        p.create_end_time,
+        f.filename::VARCHAR(255) AS json_file_name,
+        'Create'::TEXT AS task,
+        CASE WHEN p.review_user IS NOT NULL THEN 'Skip' ELSE p.status END::TEXT AS status,
+        NULL::TEXT AS skip_cat,
+        NULL::TEXT AS reason
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    WHERE f.filename = ANY(input_filenames)
+        AND p.create_user IS NOT NULL
+        AND p.create_user <> ''
+
+    UNION ALL
+
+    SELECT
+        p.id AS prompt_id,
+        p.review_user::TEXT AS user_name,
+        p.review_start_time,
+        p.review_end_time,
+        f.filename::VARCHAR(255) AS json_file_name,
+        'Review'::TEXT AS task,
+        p.status::TEXT AS status,
+        p.review_skip_cat::TEXT AS skip_cat,
+        p.review_skip_reason::TEXT AS reason
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    WHERE f.filename = ANY(input_filenames)
+        AND p.review_user IS NOT NULL
+        AND p.review_user <> '';
+END;
+$$;
+
+
+
+"""
+create_stored_procedure(info_d_func)
+
+info_d__with_username_func = """
+CREATE OR REPLACE FUNCTION get_release_info_username(
+    input_filenames TEXT[],
+    input_usernames TEXT[]
+)
+RETURNS TABLE (
+    prompt_id INTEGER,
+    user_name TEXT,
+    start_time TIMESTAMP,
+    end_time TIMESTAMP,
+    json_file_name VARCHAR(255),
+    task TEXT,
+    status TEXT,
+    skip_cat TEXT,
+    reason TEXT
+)
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RETURN QUERY
+    SELECT
+        p.id AS prompt_id,
+        p.create_user::TEXT AS user_name,
+        p.create_start_time,
+        p.create_end_time,
+        f.filename::VARCHAR(255) AS json_file_name,
+        'Create'::TEXT AS task,
+        CASE WHEN p.review_user IS NOT NULL THEN 'Skip' ELSE p.status END::TEXT AS status,
+        NULL::TEXT AS skip_cat,
+        NULL::TEXT AS reason
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    WHERE f.filename = ANY(input_filenames)
+        AND p.create_user IS NOT NULL
+        AND p.create_user <> ''
+        AND p.create_user = ANY(input_usernames)
+
+    UNION ALL
+
+    SELECT
+        p.id AS prompt_id,
+        p.review_user::TEXT AS user_name,
+        p.review_start_time,
+        p.review_end_time,
+        f.filename::VARCHAR(255) AS json_file_name,
+        'Review'::TEXT AS task,
+        p.status::TEXT AS status,
+        p.review_skip_cat::TEXT AS skip_cat,
+        p.review_skip_reason::TEXT AS reason
+    FROM prompts p
+    JOIN files f ON p.file_id = f.id
+    WHERE f.filename = ANY(input_filenames)
+        AND p.review_user IS NOT NULL
+        AND p.review_user <> ''
+        AND p.review_user = ANY(input_usernames);
+END;
+$$;
+
+
+"""
+create_stored_procedure(info_d__with_username_func)
+
 # SQL command to create the stored procedure
 create_procedure_sql = """
 CREATE OR REPLACE FUNCTION initialize_response_scores(p_create_user VARCHAR(50), p_user_task VARCHAR(50), p_filename VARCHAR(255))
@@ -736,7 +859,6 @@ def load_question(username, user_task, filename):
     conn = get_db_connection()
     user_task = user_task.lower()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    print('querying')
 
     try:
         # Call the stored procedure
@@ -746,7 +868,6 @@ def load_question(username, user_task, filename):
 
         row = cur.fetchone()  # Fetch only one row
         conn.commit()
-        print(row)
 
         if row:
             return {
@@ -877,12 +998,12 @@ def save_and_next_j1(curr_prompt, username, user_task, filename, id_1_j1, id_2_j
         curr_prompt["judgement_1_2_score"] = score_2_j1
         curr_prompt["judgement_1_2_reason"] = reason_2_j1
 
-        print("Judgements updated successfully")
+   
         if get_judgement_data(id_1_j2) or get_judgement_data(id_2_j2) :
             return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True),gr.Tabs(visible=False), curr_prompt
         if get_judgement_data(id_1_j3) or get_judgement_data(id_2_j3) :
             return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=True), curr_prompt
-        print(curr_prompt)
+
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -893,6 +1014,146 @@ def save_and_next_j1(curr_prompt, username, user_task, filename, id_1_j1, id_2_j
 
     except Exception as e:
         print(f"Error updating judgements: {e}")
+
+
+import psycopg2
+import pandas as pd
+from datetime import datetime
+
+import pandas as pd
+import psycopg2
+
+def load_file_info_d_with_username(filenames, usernames):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        all_results = []
+
+        cur.execute("SELECT * FROM get_release_info_username(%s, %s)", (filenames, usernames,))
+        results = cur.fetchall()
+        all_results.extend(results)
+  
+
+        cur.close()
+        conn.close()
+
+    except psycopg2.Error as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+        return pd.DataFrame({
+            'ID': [],
+            'JSON Filename': [],
+            'User Name': [],
+            'Task': [],
+            'Status': [],
+            'Start Datetime': [],
+            'End Datetime': [],
+            'Skip Category': [],
+            'Reason for Skip': []
+        })
+
+    # Create DataFrame from results
+    df = pd.DataFrame(all_results, columns=['prompt_id' ,'user_name','start_time','end_time','json_file_name','task','status','skip_cat','reason'])
+
+    # Rename columns to match desired output format
+    df.rename(columns={
+        'prompt_id': 'ID',
+        'json_file_name': 'JSON Filename',
+        'user_name': 'User Name',
+        'task': 'Task',
+        'status': 'Status',
+        'start_time': 'Start Datetime',
+        'end_time': 'End Datetime',
+        'skip_cat': 'Skip Category',
+        'reason': 'Reason for Skip'
+    }, inplace=True)
+    choices = df[df['Status'] == 'wip']['ID'].unique().tolist()
+    if choices == []:
+        gr.Warning('No Prompts in WIP for selected combination !')
+    return df, gr.Dropdown(choices=choices, multiselect=True, interactive=True, label='ID')
+
+def initialize_file_info_d():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT filename from files;")
+    filenames = cur.fetchall()
+    cur.execute("SELECT * FROM get_release_info(%s)", (filenames,))
+    results = cur.fetchall()
+    cur.close()
+    conn.close()
+      # Create DataFrame from results
+    df = pd.DataFrame(results, columns=['prompt_id' ,'user_name','start_time','end_time','json_file_name','task','status','skip_cat','reason'])
+
+    # Rename columns to match desired output format
+    df.rename(columns={
+        'prompt_id': 'ID',
+        'json_file_name': 'JSON Filename',
+        'user_name': 'User Name',
+        'task': 'Task',
+        'status': 'Status',
+        'start_time': 'Start Datetime',
+        'end_time': 'End Datetime',
+        'skip_cat': 'Skip Category',
+        'reason': 'Reason for Skip'
+    }, inplace=True)
+
+    return df
+
+def load_file_info_d(filenames):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        all_results = []
+
+        cur.execute("SELECT * FROM get_release_info(%s)", (filenames,))
+        results = cur.fetchall()
+        all_results.extend(results)
+     
+
+        cur.close()
+        conn.close()
+
+    except psycopg2.Error as e:
+        print(f"Error connecting to PostgreSQL database: {e}")
+        return pd.DataFrame({
+            'ID': [],
+            'JSON Filename': [],
+            'User Name': [],
+            'Task': [],
+            'Status': [],
+            'Start Datetime': [],
+            'End Datetime': [],
+            'Skip Category': [],
+            'Reason for Skip': []
+        })
+
+    # Create DataFrame from results
+    df = pd.DataFrame(all_results, columns=['prompt_id' ,'user_name','start_time','end_time','json_file_name','task','status','skip_cat','reason'])
+
+    # Rename columns to match desired output format
+    df.rename(columns={
+        'prompt_id': 'ID',
+        'json_file_name': 'JSON Filename',
+        'user_name': 'User Name',
+        'task': 'Task',
+        'status': 'Status',
+        'start_time': 'Start Datetime',
+        'end_time': 'End Datetime',
+        'skip_cat': 'Skip Category',
+        'reason': 'Reason for Skip'
+    }, inplace=True)
+
+    return df, get_usernames_for_info_d(filenames, df)
+
+def get_files_for_file_info_d():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT filename from files;")
+    filenames = cur.fetchall()
+    cur.close()
+    conn.close()
+    return gr.Dropdown(label='Filename', choices=[filename[0] for filename in filenames], multiselect=True, interactive=True)
 
 
 def skip_and_next_j1(skip_reason, username, user_task, filename ,curr_prompt,id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3, score_1_j1, score_2_j1, reason_1_j1, reason_2_j1, skip_cat):
@@ -917,8 +1178,7 @@ def skip_and_next_j1(skip_reason, username, user_task, filename ,curr_prompt,id_
         curr_prompt["judgement_1_2_reason"] = reason_2_j1
         curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
         curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
-        print("Judgements updated and prompt set to review and hold successfully")
-
+    
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -949,10 +1209,10 @@ def save_and_next_j2(curr_prompt, username, user_task, filename, id_1_j2, id_2_j
         curr_prompt["judgement_2_1_reason"] = reason_1_j2
         curr_prompt["judgement_2_2_score"] = score_2_j2
         curr_prompt["judgement_2_2_reason"] = reason_2_j2
-        print("Judgements updated successfully")
+
         if get_judgement_data(id_1_j3) or get_judgement_data(id_2_j3) :
             return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=True), curr_prompt
-        print(curr_prompt)
+ 
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -994,7 +1254,7 @@ def skip_and_next_j2(skip_reason , username, user_task, filename, curr_prompt,id
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
-        print("Judgements updated and prompt set to review and hold successfully")
+        
 
     except Exception as e:
         print(f"Error in skip_and_next_j1: {e}")
@@ -1016,7 +1276,7 @@ def save_and_next_j3(username, user_task, filename, curr_prompt, id_1_j3, id_2_j
         curr_prompt["judgement_3_1_reason"] = reason_1_j3
         curr_prompt["judgement_3_2_score"] = score_2_j3
         curr_prompt["judgement_3_2_reason"] = reason_2_j3
-        print(curr_prompt)
+
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -1051,7 +1311,7 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
         curr_prompt["judgement_3_2_reason"] = reason_2_j3
         curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
         curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
-        print(curr_prompt)
+      
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -1061,7 +1321,7 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
 
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
 
-        print("Judgements updated and prompt set to review and hold successfully")
+    
 
     except Exception as e:
         print(f"Error in skip_and_next_j1: {e}")
@@ -1269,7 +1529,6 @@ def export_to_jsonl(filenames):
 
             if data:
                 write_to_jsonl(filename, data)
-                print(f"Data exported to {filename} successfully.")
             else:
                 gr.Warning(f'Skipping {filename} due to incomplete labelling!')
                 print(f"Expected {expected_fields} fields, but got {len(data.keys())} for {filename}")
@@ -1281,7 +1540,6 @@ def export_to_jsonl(filenames):
         if conn:
             cur.close()
             conn.close()
-            print("Database connection closed.")
             file_paths = [os.path.abspath(filename) for filename in filenames]
             return file_paths
 
@@ -1294,7 +1552,6 @@ def update_prompt_status_in_db(prompt_id, user_task):
         # Establish a connection to the database
         conn = get_db_connection()
         cur = conn.cursor()
-        print('updating')
         # Call the stored procedure
         cur.execute("SELECT update_prompt_status(%s, %s)", (prompt_id, user_task.lower(),))
         conn.commit()
@@ -1323,8 +1580,7 @@ import json
 
 # Save scores and reasons for the current question and move to the next question
 def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 , username, user_task,filename, score_1, score_2, score_3, response_1_id, response_2_id, response_3_id):
-    print(type(curr_prompt))
-    print(username, user_task,filename, score_1, score_2, score_3, response_1_id, response_2_id, response_3_id)
+
     update_response_scores(score_1, score_2, score_3, response_1_id, response_2_id, response_3_id)
     if n_clicks != 0:
         n_clicks -= 1
@@ -1339,7 +1595,7 @@ def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_
         return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), curr_prompt, n_clicks
     if get_judgement_data(id_1_j3) or get_judgement_data(id_2_j3) :
         return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True),curr_prompt, n_clicks
-    print(curr_prompt)
+
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
     update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -1352,7 +1608,7 @@ def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_
 
 # Skip the current question and move to the next question
 def skip_and_next(n_clicks, skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 ,username, user_task,filename, response_1_id, response_2_id, response_3_id, skip_cat):
-    print(username, user_task, response_1_id, response_2_id, response_3_id)
+    
     update_response_scores(-1, -1, -1, response_1_id, response_2_id, response_3_id)
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1371,7 +1627,6 @@ def skip_and_next(n_clicks, skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2,
     if n_clicks != 0:
         n_clicks -= 1
 
-    print(curr_prompt)
     prompt_data = curr_prompt
     prompt_id = prompt_data['prompt_id']
     update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -1681,7 +1936,7 @@ def initialize_dashboard():
         # Call the stored procedure
         cur.execute('SELECT * FROM initialize_dashboard()')
         result = cur.fetchall()
-        print(result)
+  
 
         # Close cursor and connection
         cur.close()
@@ -1693,7 +1948,6 @@ def initialize_dashboard():
             df = pd.DataFrame(result, columns=columns)
             return df
         else:
-            print("Procedure returned no results.")
             gr.Warning('No Data Found')
             return pd.DataFrame({
                 'JSON File Name': [],
@@ -2065,7 +2319,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             WHERE filename NOT IN (SELECT filename FROM archived_files)
                         """)
                         files = cur.fetchall()
-                        print(files)
+                    
                         
                         cur.close()
                         conn.commit()
@@ -2278,7 +2532,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
             def validate_scores(s1,s2,s3):
                 if s1 is not None and s2 is not None and s3 is not None and int(s1) > 0 and int(s2) >0 and int(s3) >0:
-                    print(s1,s2,s3)
+            
                     return gr.Button(interactive=True)
                 return gr.Button(interactive=False)
             l_user.change(validate, inputs=[l_user, l_pass, l_task], outputs=[l_submit])
@@ -2296,6 +2550,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 return gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(selected=1)
             curr_username.change(show_admin, curr_username, outputs=[admin, p_summary_tab, tabs])
             curr_username.change(show_admin, curr_username, outputs=[dashboard_tab, p_report_tab, tabs])
+            
             def update_files(username, user_task):
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
@@ -2345,8 +2600,81 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
             curr_username.change(show_admin, curr_username, outputs=[admin, p_summary_tab, tabs])
             curr_username.change(show_admin, curr_username, outputs=[dashboard_tab, p_report_tab, tabs])
+            
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
 
+        with gr.Tab('Release WIP', visible=False) as release_wip_tab:
+            with gr.Row():
+                file_for_info_d = gr.Dropdown(choices=[], multiselect=True, label='Filename')
+                tabs.change(
+                    fn=get_files_for_file_info_d,
+                    inputs=[],
+                    outputs=[file_for_info_d]
+                )
+                username_for_info_d = gr.Dropdown(choices=[], interactive=False, multiselect=True, label='Username')
+                id_for_info_d = gr.Dropdown(label='ID', multiselect=True, interactive=False, choices=[])
+
+                def get_usernames_for_info_d(files, df):
+                    filtered_df = df[df['JSON Filename'].isin(files)]
+                    unique_usernames = filtered_df['User Name'].unique().tolist()
+                    return gr.Dropdown(choices=unique_usernames, label='Username', multiselect=True, interactive=True)
+
+
+                    
+            with gr.Row():
+                file_info_d = gr.Dataframe(
+                    headers=['ID','JSON Filename','User Name','Task','Status','Start Datetime','End Datetime','Skip Category','Reason for Skip'],
+                    datatype=["str", "str", "str", 'str', 'str', 'str', 'date', 'date', 'str'],
+                    row_count=4,
+                    col_count=(9, "fixed"),
+                    interactive=False,
+                    visible=True,
+                    value=initialize_file_info_d
+                )
+
+                file_for_info_d.change(
+                    fn=load_file_info_d,
+                    inputs=[file_for_info_d],
+                    outputs=[file_info_d, username_for_info_d]
+                )
+
+                username_for_info_d.change(
+                    fn=load_file_info_d_with_username,
+                    inputs=[file_for_info_d, username_for_info_d],
+                    outputs=[file_info_d, id_for_info_d],
+                )
+
+                def mark_yts(id_list):
+                    conn = get_db_connection()
+                    try:
+                        # Create a cursor object using the connection
+                        with conn.cursor() as cur:
+                            # Construct the SQL query with IN operator
+                            query = "UPDATE prompts SET status = 'yts' WHERE id IN %s"
+                            
+                            # Execute the query with the id_list as a tuple
+                            cur.execute(query, (tuple(id_list),))
+                            
+                            # Commit the transaction
+                            conn.commit()
+                            gr.Info(f"Marked ID - { ','.join(id_list)} as YTS")
+                            
+                    except Exception as e:
+                        print(f"Error: {e}")
+                        gr.Error(f'Error while moving - {e}')
+                        conn.rollback()  # Rollback the transaction in case of error
+                    
+                    finally:
+                        # Close cursor and connection
+                        cur.close()
+                        conn.close()
+
+                id_for_info_d.change(
+                    fn=mark_yts,
+                    inputs=[id_for_info_d],
+                    outputs=[]
+                )
+                curr_username.change(show_admin, curr_username, outputs=[release_wip_tab, release_wip_tab, tabs])
 
         with gr.Tab("SubTask1", id=2, visible=False) as subtask1:
 
@@ -2582,8 +2910,6 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                                 gr.Warning('No more prompts in history to go back !!')
 
                             n_clicks += 1
-                            print(n_clicks)
-                            print(len(prompts_list))
                             return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=True), p, n_clicks
                         prev_button.click(
                             fn=load_prev_prompt,
