@@ -1950,7 +1950,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
         return gr.Markdown(update_user_info(username, task_name, filename), visible=True)
 
     with gr.Tabs() as tabs:  
-        with gr.Tab('Productivity Report', visible=False) as p_report:
+        with gr.Tab('Productivity Report', visible=False) as p_report_tab:
             with gr.Row():
                 gr.Markdown('FROM')
                 from_day_pr = gr.Dropdown(label='Day' ,choices=days)
@@ -1987,7 +1987,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr],
                     outputs=pro_report
             )
-        with gr.Tab('Project Summary', visible=False) as p_summary:
+        with gr.Tab('Project Summary', visible=False) as p_summary_tab:
             with gr.Row():
                 gr.Markdown('FROM')
                 from_day_ps = gr.Dropdown(label='Day' ,choices=days)
@@ -2026,7 +2026,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     outputs=p_summary
             )
 
-        with gr.Tab('Dashboard', visible=False) as dashboard:
+        with gr.Tab('Dashboard', visible=False) as dashboard_tab:
             with gr.Row():
                 gr.Markdown('FROM')
                 from_day_d = gr.Dropdown(label='Day' ,choices=days)
@@ -2294,8 +2294,8 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 if curr_username.lower() == 'admin':
                     return gr.Tabs(visible=True),gr.Tabs(visible=True), gr.Tabs(selected=10)
                 return gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(selected=1)
-            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, tabs])
-            curr_username.change(show_admin, curr_username, outputs=[dashboard, p_report, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary_tab, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[dashboard_tab, p_report_tab, tabs])
             def update_files(username, user_task):
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
@@ -2343,8 +2343,8 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     return gr.Tabs(selected=id), gr.Tabs(visible=True), gr.Tabs(visible=True), gr.Tabs(visible=True)
             curr_user_task.change(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
-            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, tabs])
-            curr_username.change(show_admin, curr_username, outputs=[dashboard, p_report, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary_tab, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[dashboard_tab, p_report_tab, tabs])
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
 
 
