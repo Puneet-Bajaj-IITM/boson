@@ -2292,9 +2292,10 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             )
             def show_admin(curr_username):
                 if curr_username.lower() == 'admin':
-                    return gr.Tabs(visible=True),gr.Tabs(visible=True),gr.Tabs(visible=True),gr.Tabs(visible=True),  gr.Tabs(selected=10)
-                return gr.Tabs(visible=False),gr.Tabs(visible=False),gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(selected=1)
-            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, p_report, dashboard, tabs])
+                    return gr.Tabs(visible=True),gr.Tabs(visible=True), gr.Tabs(selected=10)
+                return gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(selected=1)
+            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[dashboard, p_report, tabs])
             def update_files(username, user_task):
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
@@ -2342,7 +2343,8 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     return gr.Tabs(selected=id), gr.Tabs(visible=True), gr.Tabs(visible=True), gr.Tabs(visible=True)
             curr_user_task.change(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
-            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, p_report, dashboard, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[admin, p_summary, tabs])
+            curr_username.change(show_admin, curr_username, outputs=[dashboard, p_report, tabs])
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
 
 
