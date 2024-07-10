@@ -1,3 +1,200 @@
+
+import psycopg2
+from psycopg2 import sql
+
+def get_db_connection():
+    return psycopg2.connect(
+        dbname="boson",
+        user="ubuntu",
+        password="Ddd@1234",  # Replace with your password
+        host="localhost"
+    )
+
+import psycopg2
+
+# Connect to your PostgreSQL database
+conn = get_db_connection()
+
+# Create a cursor object
+cur = conn.cursor()
+
+
+# Retrieve all functions and procedures created by the specific user
+cur.execute(f"""
+    SELECT routine_type, routine_schema, routine_name 
+    FROM information_schema.routines
+    WHERE routine_type IN ('FUNCTION', 'PROCEDURE')
+    AND specific_schema NOT IN ('pg_catalog', 'information_schema')
+""")
+routines = cur.fetchall()
+
+# Drop each function and procedure
+for routine_type, routine_schema, routine_name in routines:
+    drop_statement = f'DROP {routine_type} {routine_schema}.{routine_name} CASCADE;'
+    try:
+        cur.execute(drop_statement)
+        print(f"Successfully dropped {routine_type.lower()} {routine_schema}.{routine_name}")
+    except Exception as e:
+        print(f"Failed to drop {routine_type.lower()} {routine_schema}.{routine_name}: {e}")
+
+# Commit the transaction
+conn.commit()
+
+# Close the cursor and connection
+cur.close()
+conn.close()
+
+
+def setup_database():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Drop existing tables
+    # cur.execute("""
+    #     DO $$ DECLARE
+    #         r RECORD;
+    #     BEGIN
+    #         FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
+    #             EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
+    #         END LOOP;
+    #     END $$;
+    # """)
+
+    # # Drop existing functions
+    # cur.execute("""
+    #     DO $$ DECLARE
+    #         r RECORD;
+    #     BEGIN
+    #         FOR r IN (SELECT routine_name FROM information_schema.routines WHERE routine_type='FUNCTION' AND specific_schema = current_schema()) LOOP
+    #             EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.routine_name) || ' CASCADE';
+    #         END LOOP;
+    #     END $$;
+    # """)
+
+    # Create users table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(50) UNIQUE NOT NULL,
+            password VARCHAR(50) NOT NULL,
+            user_role VARCHAR(50) NOT NULL
+        )
+    """)
+
+    # Insert test data
+    cur.execute("""
+        INSERT INTO users (username, password, user_role) VALUES
+        ('creator1', 'password1', 'creator'),
+        ('creator2', 'password2', 'creator'),
+        ('reviewer1', 'password3', 'reviewer'),
+        ('admin', 'admin', 'admin')
+        ON CONFLICT (username) DO NOTHING
+    """)
+
+    # Create files table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS files (
+            id SERIAL PRIMARY KEY,
+            filename VARCHAR(255) UNIQUE NOT NULL
+        )
+    """)
+
+    # Create prompts table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS prompts (
+            id SERIAL PRIMARY KEY,
+            line_id INTEGER,
+            prompt_text TEXT NOT NULL,
+            domain VARCHAR(255),
+            task VARCHAR(255),
+            meta_data JSONB,
+            phase VARCHAR(20),
+            status VARCHAR(20),
+            file_id INTEGER REFERENCES files(id),
+            create_user VARCHAR(20),
+            review_user VARCHAR(20),
+            create_start_time TIMESTAMP,
+            create_end_time TIMESTAMP,
+            create_skip_reason TEXT,
+            create_skip_cat TEXT,
+            review_skip_reason TEXT,
+            review_skip_cat TEXT,
+            review_start_time TIMESTAMP,
+            review_end_time TIMESTAMP
+        )
+    """)
+
+    # Create responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS responses (
+            id SERIAL PRIMARY KEY,
+            prompt_id INTEGER REFERENCES prompts(id),
+            response_text TEXT NOT NULL
+        )
+    """)
+
+    # Create judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS judgements (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER REFERENCES responses(id),
+            reason TEXT,
+            rubric TEXT,
+            score INTEGER
+        )
+    """)
+
+    # Create labelled_responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS labelled_responses (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER UNIQUE REFERENCES responses(id),
+            score INTEGER
+        )
+    """)
+
+    # Create labelled_judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS labelled_judgements (
+            id SERIAL PRIMARY KEY,
+            judgement_id INTEGER UNIQUE REFERENCES judgements(id),
+            reason TEXT,
+            score INTEGER
+        )
+    """)
+
+    # Create reviewed_responses table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_responses (
+            id SERIAL PRIMARY KEY,
+            response_id INTEGER REFERENCES responses(id),
+            score INTEGER
+        )
+    """)
+
+    # Create reviewed_judgements table
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS reviewed_judgements (
+            id SERIAL PRIMARY KEY,
+            judgement_id INTEGER REFERENCES judgements(id),
+            reason TEXT,
+            score INTEGER
+        )
+    """)
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS archived_files (
+            id SERIAL PRIMARY KEY,
+            filename VARCHAR(255) UNIQUE NOT NULL
+        )
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+setup_database()
+print("Database setup complete.")
+
+
 from pickle import NONE
 
 import psycopg2
@@ -26,12 +223,23 @@ def get_project_summary(from_day, from_month, from_year, to_day, to_month, to_ye
     GROUP BY review_skip_cat
     """
 
+    query2 = f"""
+    SELECT create_skip_cat, COUNT(*) as total_prompts
+    FROM prompts
+    WHERE create_start_time >= '{from_date}' AND create_start_time<= '{to_date}'
+    GROUP BY create_skip_cat
+    """
+
     # Connect to the PostgreSQL database
     try:
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(query)
         result = cur.fetchall()
+        cur.execute(f"SELECT COUNT(*) FROM prompts WHERE create_start_time >= '{from_date}' AND create_start_time<= '{to_date}'")
+        length = cur.fetchone()[0]
+        cur.execute(query2)
+        result2 = cur.fetchall()
         cur.close()
         conn.close()
     except Exception as e:
@@ -39,13 +247,23 @@ def get_project_summary(from_day, from_month, from_year, to_day, to_month, to_ye
         return pd.DataFrame({'Skip Category': [], 'Total Prompts': []})
 
     # Prepare the data for the DataFrame
-    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip']
+    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'No Skip']
     total_prompts = {category: 0 for category in categories}
 
-    for row in result:
+    s = 0
+    for row in result: 
         category, count = row
         if category in total_prompts:
-            total_prompts[category] = count
+            s += count
+            total_prompts[category] += count
+
+    for row in result2:
+        category, count = row
+        if category in total_prompts:
+            s += count
+            total_prompts[category] += count
+
+    total_prompts['No Skip'] = length - s
 
     # Create the DataFrame
     df = pd.DataFrame({
@@ -56,11 +274,18 @@ def get_project_summary(from_day, from_month, from_year, to_day, to_month, to_ye
     return df
 
 def initialize_p_summary():
+
     # Define the SQL query
     query = f"""
     SELECT review_skip_cat, COUNT(*) as total_prompts
     FROM prompts
     GROUP BY review_skip_cat
+    """
+
+    query2 = f"""
+    SELECT create_skip_cat, COUNT(*) as total_prompts
+    FROM prompts
+    GROUP BY create_skip_cat
     """
 
     # Connect to the PostgreSQL database
@@ -69,6 +294,10 @@ def initialize_p_summary():
         cur = conn.cursor()
         cur.execute(query)
         result = cur.fetchall()
+        cur.execute('SELECT COUNT(*) FROM prompts;')
+        length = cur.fetchone()[0]
+        cur.execute(query2)
+        result2 = cur.fetchall()
         cur.close()
         conn.close()
     except Exception as e:
@@ -76,13 +305,23 @@ def initialize_p_summary():
         return pd.DataFrame({'Skip Category': [], 'Total Prompts': []})
 
     # Prepare the data for the DataFrame
-    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip']
+    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'No Skip']
     total_prompts = {category: 0 for category in categories}
 
-    for row in result:
+    s = 0
+    for row in result: 
         category, count = row
         if category in total_prompts:
-            total_prompts[category] = count
+            s += count
+            total_prompts[category] += count
+
+    for row in result2:
+        category, count = row
+        if category in total_prompts:
+            s += count
+            total_prompts[category] += count
+
+    total_prompts['No Skip'] = length - s
 
     # Create the DataFrame
     df = pd.DataFrame({
@@ -141,7 +380,7 @@ def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
 
     if from_date > to_date:
         gr.Warning('Invalid Range Selected!')
-      
+
 
     # Initialize an empty list to store data
     data = []
@@ -162,15 +401,17 @@ def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
                 data.append({
                     'User Name': row[0],
                     'Completed Date': row[1],
-                    'JSON File Name': row[2],
-                    'Task': row[3],
-                    'Rating Average': row[4],
-                    'Total Record Skipped': row[5],
-                    'Total Record Completed': row[6],
-                    'Duration (Min)': row[7]
+                    'Status': row[2],
+                    'JSON File Name': row[3],
+                    'Task': row[4],
+                    'Rating Average': row[5],
+                    'Total Record Skipped': row[6],
+                    'Total Record Completed': row[7],
+                    'Duration (Min)': row[8]
                 })
 
     except Exception as e:
+        print(results)
         print(f"Error connecting to PostgreSQL database: {e}")
 
     finally:
@@ -191,7 +432,7 @@ import psycopg2
 import pandas as pd
 
 def initialize_pro_report():
-    df = pd.DataFrame(columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
+    df = pd.DataFrame(columns=['User Name', 'Completed Date', "Status", 'JSON File Name', 'Task',
                                'Rating Average', 'Total Record Skipped', 'Total Record Completed',
                                'Duration (Min)'])
 
@@ -207,7 +448,7 @@ def initialize_pro_report():
 
         if result:
             # Convert result to DataFrame
-            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
+            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'Status', 'JSON File Name', 'Task',
                                                'Rating Average', 'Total Record Skipped', 'Total Record Completed',
                                                'Duration (Min)'])
 
@@ -220,7 +461,6 @@ def initialize_pro_report():
             cur.close()
         if conn:
             conn.close()
-
     return df
 
 
@@ -356,6 +596,8 @@ BEGIN
     WHERE f.filename = ANY(input_filenames)
         AND p.create_user IS NOT NULL
         AND p.create_user <> ''
+        AND p.status = 'wip'
+        AND p.review_user IS NULL
 
     UNION ALL
 
@@ -373,7 +615,9 @@ BEGIN
     JOIN files f ON p.file_id = f.id
     WHERE f.filename = ANY(input_filenames)
         AND p.review_user IS NOT NULL
-        AND p.review_user <> '';
+        AND p.review_user <> ''
+        AND p.status= 'wip'
+        ;
 END;
 $$;
 
@@ -418,6 +662,8 @@ BEGIN
         AND p.create_user IS NOT NULL
         AND p.create_user <> ''
         AND p.create_user = ANY(input_usernames)
+        AND p.status = 'wip'
+        AND p.review_user IS NULL
 
     UNION ALL
 
@@ -436,7 +682,9 @@ BEGIN
     WHERE f.filename = ANY(input_filenames)
         AND p.review_user IS NOT NULL
         AND p.review_user <> ''
-        AND p.review_user = ANY(input_usernames);
+        AND p.review_user = ANY(input_usernames)
+        AND p.status = 'wip'
+        ;
 END;
 $$;
 
@@ -998,7 +1246,7 @@ def save_and_next_j1(curr_prompt, username, user_task, filename, id_1_j1, id_2_j
         curr_prompt["judgement_1_2_score"] = score_2_j1
         curr_prompt["judgement_1_2_reason"] = reason_2_j1
 
-   
+
         if get_judgement_data(id_1_j2) or get_judgement_data(id_2_j2) :
             return gr.Tabs(selected=4), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True),gr.Tabs(visible=False), curr_prompt
         if get_judgement_data(id_1_j3) or get_judgement_data(id_2_j3) :
@@ -1033,7 +1281,7 @@ def load_file_info_d_with_username(filenames, usernames):
         cur.execute("SELECT * FROM get_release_info_username(%s, %s)", (filenames, usernames,))
         results = cur.fetchall()
         all_results.extend(results)
-  
+
 
         cur.close()
         conn.close()
@@ -1109,7 +1357,7 @@ def load_file_info_d(filenames):
         cur.execute("SELECT * FROM get_release_info(%s)", (filenames,))
         results = cur.fetchall()
         all_results.extend(results)
-     
+
 
         cur.close()
         conn.close()
@@ -1178,7 +1426,7 @@ def skip_and_next_j1(skip_reason, username, user_task, filename ,curr_prompt,id_
         curr_prompt["judgement_1_2_reason"] = reason_2_j1
         curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
         curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
-    
+
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -1212,7 +1460,7 @@ def save_and_next_j2(curr_prompt, username, user_task, filename, id_1_j2, id_2_j
 
         if get_judgement_data(id_1_j3) or get_judgement_data(id_2_j3) :
             return gr.Tabs(selected=5), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=True), curr_prompt
- 
+
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -1254,7 +1502,7 @@ def skip_and_next_j2(skip_reason , username, user_task, filename, curr_prompt,id
         if q is None:
             return gr.Tabs(selected=1), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=False), q
         return  gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q
-        
+
 
     except Exception as e:
         print(f"Error in skip_and_next_j1: {e}")
@@ -1311,7 +1559,7 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
         curr_prompt["judgement_3_2_reason"] = reason_2_j3
         curr_prompt[f"{user_task.lower()}_skip_reason"] = skip_reason
         curr_prompt[f"{user_task.lower()}_skip_cat"] = skip_cat
-      
+
         prompt_data = curr_prompt
         prompt_id = prompt_data['prompt_id']
         update_prompt_status_in_db(prompt_id, user_task.lower())
@@ -1321,7 +1569,7 @@ def skip_and_next_j3(skip_reason, username, user_task, filename, curr_prompt, id
 
         return gr.Tabs(selected=2), gr.Tabs(visible=False), gr.Tabs(visible=False),gr.Tabs(visible=True), gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(visible=False), q, curr_prompt
 
-    
+
 
     except Exception as e:
         print(f"Error in skip_and_next_j1: {e}")
@@ -1608,7 +1856,7 @@ def save_and_next(n_clicks, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_
 
 # Skip the current question and move to the next question
 def skip_and_next(n_clicks, skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 ,username, user_task,filename, response_1_id, response_2_id, response_3_id, skip_cat):
-    
+
     update_response_scores(-1, -1, -1, response_1_id, response_2_id, response_3_id)
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1656,6 +1904,7 @@ CREATE OR REPLACE FUNCTION get_pro_report(
 RETURNS TABLE (
     user_name VARCHAR(50),
     completed_date TIMESTAMP,
+    status VARCHAR(5),
     json_file_name VARCHAR(255),
     task VARCHAR(10),
     rating_average NUMERIC,
@@ -1671,12 +1920,13 @@ BEGIN
     SELECT
         p.create_user,
         p.create_end_time,
+        p.status::VARCHAR(5),
         f.filename,
         'create'::VARCHAR(10),
         COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
         SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
         COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0
+        ROUND(EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0, 2)
     FROM prompts p
     JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
@@ -1684,21 +1934,22 @@ BEGIN
     WHERE p.phase = 'create'
         AND p.create_user IS NOT NULL
         AND p.create_user <> ''
-        AND p.create_start_time >= from_date 
+        AND p.create_start_time >= from_date
         AND p.create_end_time <= to_date
-    GROUP BY p.create_user, p.create_end_time, f.filename, p.create_start_time;
+    GROUP BY p.create_user, p.create_end_time, p.status, f.filename, p.create_start_time;
 
     -- Query for review phase
     RETURN QUERY
     SELECT
         p.review_user,
         p.review_end_time,
+        p.status::VARCHAR(5),
         f.filename,
         'review'::VARCHAR(10),
         COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
         SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
         COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0
+        ROUND(EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0, 2)
     FROM prompts p
     JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
@@ -1706,9 +1957,9 @@ BEGIN
     WHERE p.phase = 'review'
         AND p.review_user IS NOT NULL
         AND p.review_user <> ''
-        AND p.review_start_time >= from_date 
+        AND p.review_start_time >= from_date
         AND p.review_end_time <= to_date
-    GROUP BY p.review_user, p.review_end_time, f.filename, p.review_start_time;
+    GROUP BY p.review_user, p.review_end_time,p.status, f.filename, p.review_start_time;
 END;
 $$;
 
@@ -1719,6 +1970,7 @@ CREATE OR REPLACE FUNCTION initialize_pro_report()
 RETURNS TABLE (
     user_name VARCHAR(50),
     completed_date TIMESTAMP,
+    status VARCHAR(5),
     json_file_name VARCHAR(255),
     task VARCHAR(10),
     rating_average NUMERIC,
@@ -1734,12 +1986,13 @@ BEGIN
     SELECT
         p.create_user,
         p.create_end_time,
+        p.status::VARCHAR(5),
         f.filename,
         'create'::VARCHAR(10),
         COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
         SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
         COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0
+        ROUND(EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0, 2)
     FROM prompts p
     JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
@@ -1747,19 +2000,20 @@ BEGIN
     WHERE p.phase = 'create'
         AND p.create_user IS NOT NULL
         AND p.create_user <> ''
-    GROUP BY p.create_user, p.create_end_time, f.filename, p.create_start_time;
+    GROUP BY p.create_user, p.create_end_time,p.status, f.filename, p.create_start_time;
 
     -- Query for review phase
     RETURN QUERY
     SELECT
         p.review_user,
         p.review_end_time,
+        p.status::VARCHAR(5),
         f.filename,
         'review'::VARCHAR(10),
         COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
         SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
         COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0
+        ROUND(EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0, 2)
     FROM prompts p
     JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
@@ -1767,7 +2021,7 @@ BEGIN
     WHERE p.phase = 'review'
         AND p.review_user IS NOT NULL
         AND p.review_user <> ''
-    GROUP BY p.review_user, p.review_end_time, f.filename, p.review_start_time;
+    GROUP BY p.review_user, p.review_end_time,p.status, f.filename, p.review_start_time;
 END;
 $$;
 
@@ -1936,7 +2190,7 @@ def initialize_dashboard():
         # Call the stored procedure
         cur.execute('SELECT * FROM initialize_dashboard()')
         result = cur.fetchall()
-  
+
 
         # Close cursor and connection
         cur.close()
@@ -1983,96 +2237,6 @@ from datetime import datetime
 import pandas as pd
 
 
-def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
-    # Define the date range
-    from_date = f'{from_year}-{from_month}-{from_day}'
-    to_date = f'{to_year}-{to_month}-{to_day}'
-
-    if from_date > to_date:
-        gr.Warning('Invalid Range Selected!')
-      
-
-    # Initialize an empty list to store data
-    data = []
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        # Call the stored procedure using CALL
-        cur.execute("SELECT * FROM get_pro_report(%s::TIMESTAMP, %s::TIMESTAMP)", (from_date, to_date))
-
-        # Fetch all results
-        results = cur.fetchall()
-
-        if results:
-            # Process each row and append to data list
-            for row in results:
-                data.append({
-                    'User Name': row[0],
-                    'Completed Date': row[1],
-                    'JSON File Name': row[2],
-                    'Task': row[3],
-                    'Rating Average': row[4],
-                    'Total Record Skipped': row[5],
-                    'Total Record Completed': row[6],
-                    'Duration (Min)': row[7]
-                })
-
-    except Exception as e:
-        print(f"Error connecting to PostgreSQL database: {e}")
-
-    finally:
-        # Ensure cursor and connection are closed even if an error occurs
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
-
-    # Convert list of dictionaries to DataFrame
-    if data == []:
-        gr.Warning('No Data Found')
-    df = pd.DataFrame(data)
-    return df
-
-
-import psycopg2
-import pandas as pd
-
-def initialize_pro_report():
-    df = pd.DataFrame(columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
-                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
-                               'Duration (Min)'])
-
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-
-        # Execute the DO block to call the stored procedure and capture output
-        cur.execute('SELECT * FROM initialize_pro_report()')
-
-        # Fetch all results from the cursor
-        result = cur.fetchall()
-
-        if result:
-            # Convert result to DataFrame
-            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'JSON File Name', 'Task',
-                                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
-                                               'Duration (Min)'])
-
-    except Exception as e:
-        print(f"Error connecting to PostgreSQL database: {e}")
-
-    finally:
-        # Ensure cursor and connection are closed even if an error occurs
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
-
-    return df
-
-
 def login(username, password, user_task):
     if verify_user(username.lower(), password):
         return username.lower(), user_task
@@ -2091,10 +2255,13 @@ def get_files(username, user_task):
     try:
         # Secure query using parameterized statements
         query = """
-            SELECT DISTINCT f.filename
-            FROM files f
-            INNER JOIN prompts p ON f.id = p.file_id
-            WHERE p.phase = %s AND p.status = 'yts'
+              SELECT DISTINCT f.filename
+              FROM files f
+              INNER JOIN prompts p ON f.id = p.file_id
+              WHERE p.phase = %s AND p.status = 'yts'
+              AND f.filename NOT IN (
+                  SELECT filename FROM archived_files
+              )
         """
         cur.execute(query, (user_task.lower(),))
         filenames = cur.fetchall()
@@ -2164,7 +2331,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
         **User Information:** **Username:** {username.lower()}, **Task:** {task_name}, **Filename:** {filename}
         """
 
-    def update_prompt_counts(filename, user_task, curr_usertask):
+    def update_prompt_counts(curr_username, filename, user_task, curr_usertask):
         total_count, create_done, create_skipped, create_WIP, create_YTS, review_done, review_skipped, review_WIP, review_YTS = get_prompt_counts(filename)
 
         # Check for None and handle accordingly
@@ -2177,7 +2344,9 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             markdown_text = f"Total Records: {total_count}, Completed: {done}, Skipped: {skipped}, Create WIP: {create_WIP}, Create YTS: {YTS}, Review YTS - {review_YTS}, Review WIP - {review_WIP} "
         else:
             markdown_text = None
-
+        
+        if curr_username == 'admin':
+            return gr.Markdown(value=None, visible=False)
         return gr.Markdown(value=markdown_text, visible=True)
 
     # Initial user information (for demonstration purposes)
@@ -2203,36 +2372,38 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
     def refresh_user_info(username, task_name, filename):
         return gr.Markdown(update_user_info(username, task_name, filename), visible=True)
 
-    with gr.Tabs() as tabs:  
+    with gr.Tabs() as tabs:
         with gr.Tab('Productivity Report', visible=False) as p_report_tab:
-            with gr.Row():
-                gr.Markdown('FROM')
-                from_day_pr = gr.Dropdown(label='Day' ,choices=days)
-                from_month_pr = gr.Dropdown(label='Month', choices=months)
-                from_year_pr = gr.Dropdown(label='Year', choices=years)
-                gr.Markdown('TO')
-                to_day_pr = gr.Dropdown(label='Day', choices=days)
-                to_month_pr = gr.Dropdown(label='Month', choices=months)
-                to_year_pr = gr.Dropdown(label='Year', choices=years)
-                filter_btn_pr = gr.Button('Filter')
+            with gr.Accordion("Filter", open=False):
+                with gr.Row():
+                    gr.Markdown('FROM')
+                    from_day_pr = gr.Dropdown(label='Day' ,choices=days)
+                    from_month_pr = gr.Dropdown(label='Month', choices=months)
+                    from_year_pr = gr.Dropdown(label='Year', choices=years)
+                    gr.Markdown('TO')
+                    to_day_pr = gr.Dropdown(label='Day', choices=days)
+                    to_month_pr = gr.Dropdown(label='Month', choices=months)
+                    to_year_pr = gr.Dropdown(label='Year', choices=years)
+                with gr.Row():
+                    filter_btn_pr = gr.Button('Filter')
 
-                def show_filter(from_day, from_month, from_year, to_day, to_month, to_year):
-                    if from_day and from_month and from_year and to_day and to_month and to_year:
-                        return gr.Button(interactive=True)
-                    return gr.Button(interactive=False)
-                
-                from_day_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
-                to_day_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
-                to_month_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
-                to_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
-                from_month_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
-                from_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                    def show_filter(from_day, from_month, from_year, to_day, to_month, to_year):
+                        if from_day and from_month and from_year and to_day and to_month and to_year:
+                            return gr.Button(interactive=True)
+                        return gr.Button(interactive=False)
+
+                    from_day_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                    to_day_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                    to_month_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                    to_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                    from_month_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
+                    from_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
 
             pro_report = gr.Dataframe(
-                headers=['User Name','Completed Date','JSON File Name','Task','Rating Average','Total Record Skipped','Total Record Completed', 'Duration (Min)'],
-                datatype=["str", "date", 'str', 'str', 'number', 'number', 'number', 'number'],
-                row_count=4,
-                col_count=(8, "fixed"),
+                headers=['User Name','Completed Date','Status', 'JSON File Name','Task','Rating Average','Total Record Skipped','Total Record Completed', 'Duration (Min)'],
+                datatype=["str", "date",'str', 'str', 'str', 'number', 'number', 'number', 'number'],
+                row_count=12,
+                col_count=(9, "fixed"),
                 interactive=False,
                 value=initialize_pro_report
             )
@@ -2242,27 +2413,29 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     outputs=pro_report
             )
         with gr.Tab('Project Summary', visible=False) as p_summary_tab:
-            with gr.Row():
-                gr.Markdown('FROM')
-                from_day_ps = gr.Dropdown(label='Day' ,choices=days)
-                from_month_ps = gr.Dropdown(label='Month', choices=months)
-                from_year_ps = gr.Dropdown(label='Year', choices=years)
-                gr.Markdown('TO')
-                to_day_ps = gr.Dropdown(label='Day', choices=days)
-                to_month_ps = gr.Dropdown(label='Month', choices=months)
-                to_year_ps = gr.Dropdown(label='Year', choices=years)
-                filter_btn_ps = gr.Button('Filter', interactive=False)
-                def show_filter(from_day, from_month, from_year, to_day, to_month, to_year):
-                    if from_day and from_month and from_year and to_day and to_month and to_year:
-                        return gr.Button(interactive=True)
-                    return gr.Button(interactive=False)
-                
-                from_day_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
-                to_day_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
-                to_month_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
-                to_year_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
-                from_month_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
-                from_year_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+            with gr.Accordion("Filter", open=False):
+                with gr.Row():
+                    gr.Markdown('FROM')
+                    from_day_ps = gr.Dropdown(label='Day' ,choices=days)
+                    from_month_ps = gr.Dropdown(label='Month', choices=months)
+                    from_year_ps = gr.Dropdown(label='Year', choices=years)
+                    gr.Markdown('TO')
+                    to_day_ps = gr.Dropdown(label='Day', choices=days)
+                    to_month_ps = gr.Dropdown(label='Month', choices=months)
+                    to_year_ps = gr.Dropdown(label='Year', choices=years)
+                with gr.Row():
+                    filter_btn_ps = gr.Button('Filter', interactive=False)
+                    def show_filter(from_day, from_month, from_year, to_day, to_month, to_year):
+                        if from_day and from_month and from_year and to_day and to_month and to_year:
+                            return gr.Button(interactive=True)
+                        return gr.Button(interactive=False)
+
+                    from_day_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                    to_day_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                    to_month_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                    to_year_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                    from_month_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
+                    from_year_ps.change(show_filter, inputs=[from_day_ps, from_month_ps, from_year_ps, to_day_ps, to_month_ps, to_year_ps], outputs=filter_btn_ps)
 
 
 
@@ -2281,91 +2454,93 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             )
 
         with gr.Tab('Dashboard', visible=False) as dashboard_tab:
-            with gr.Row():
-                gr.Markdown('FROM')
-                from_day_d = gr.Dropdown(label='Day' ,choices=days)
-                from_month_d = gr.Dropdown(label='Month', choices=months)
-                from_year_d = gr.Dropdown(label='Year', choices=years)
-                gr.Markdown('TO')
-                to_day_d = gr.Dropdown(label='Day', choices=days)
-                to_month_d = gr.Dropdown(label='Month', choices=months)
-                to_year_d = gr.Dropdown(label='Year', choices=years)
-                filter_btn_d = gr.Button('Filter', interactive=False)
-                from_day_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
-                to_day_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
-                to_month_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
-                to_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
-                from_month_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
-                from_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+            with gr.Accordion("Filter", open=False):
+                with gr.Row():
+                    gr.Markdown('FROM')
+                    from_day_d = gr.Dropdown(label='Day' ,choices=days)
+                    from_month_d = gr.Dropdown(label='Month', choices=months)
+                    from_year_d = gr.Dropdown(label='Year', choices=years)
+                    gr.Markdown('TO')
+                    to_day_d = gr.Dropdown(label='Day', choices=days)
+                    to_month_d = gr.Dropdown(label='Month', choices=months)
+                    to_year_d = gr.Dropdown(label='Year', choices=years)
+                with gr.Row():
+                    filter_btn_d = gr.Button('Filter', interactive=False)
+                    from_day_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                    to_day_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                    to_month_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                    to_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                    from_month_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
+                    from_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
 
-            with gr.Row():
-                def get_files_to_archive():
-                    try:
+                with gr.Row():
+                    def get_files_to_archive():
+                        try:
+                            conn = get_db_connection()
+                            cur = conn.cursor()
+
+                            # Ensure archived_files table exists
+                            cur.execute("""
+                                CREATE TABLE IF NOT EXISTS archived_files (
+                                    id SERIAL PRIMARY KEY,
+                                    filename VARCHAR(255) UNIQUE NOT NULL
+                                )
+                            """)
+
+                            # Fetch filenames from files not in archived_files
+                            cur.execute("""
+                                SELECT filename
+                                FROM files
+                                WHERE filename NOT IN (SELECT filename FROM archived_files)
+                            """)
+                            files = cur.fetchall()
+
+
+                            cur.close()
+                            conn.commit()
+                            conn.close()
+
+                            files_to_archive = [f[0] for f in files]
+                            return gr.Dropdown(choices = files_to_archive, multiselect=True, label='Files to Archive')
+
+                        except Exception as e:
+                            print(f"Error retrieving files to archive: {e}")
+                            gr.Warning('No File to Archive')
+                            return []
+
+                    files_to_archive = gr.Dropdown(choices = [], multiselect=True, label='Files to Archive')
+                    curr_username.change(
+                        fn=get_files_to_archive,
+                        inputs=[],
+                        outputs=files_to_archive
+                    )
+                    def archive_files(files):
                         conn = get_db_connection()
                         cur = conn.cursor()
 
-                        # Ensure archived_files table exists
-                        cur.execute("""
-                            CREATE TABLE IF NOT EXISTS archived_files (
-                                id SERIAL PRIMARY KEY,
-                                filename VARCHAR(255) UNIQUE NOT NULL
-                            )
-                        """)
-                        
-                        # Fetch filenames from files not in archived_files
-                        cur.execute("""
-                            SELECT filename 
-                            FROM files 
-                            WHERE filename NOT IN (SELECT filename FROM archived_files)
-                        """)
-                        files = cur.fetchall()
-                    
-                        
-                        cur.close()
+                        # Insert filenames into archived_files
+                        for filename in files:
+                            cur.execute("INSERT INTO archived_files (filename) VALUES (%s)", (filename,))
+
                         conn.commit()
+                        cur.close()
                         conn.close()
-                        
-                        files_to_archive = [f[0] for f in files]
-                        return gr.Dropdown(choices = files_to_archive, multiselect=True, label='Files to Archive')
-                    
-                    except Exception as e:
-                        print(f"Error retrieving files to archive: {e}")
-                        gr.Warning('No File to Archive')
-                        return []
 
-                files_to_archive = gr.Dropdown(choices = [], multiselect=True, label='Files to Archive')
-                tabs.change(
-                    fn=get_files_to_archive,
-                    inputs=[],
-                    outputs=files_to_archive
-                )
-                def archive_files(files):
-                    conn = get_db_connection()
-                    cur = conn.cursor()
-                    
-                    # Insert filenames into archived_files
-                    for filename in files:
-                        cur.execute("INSERT INTO archived_files (filename) VALUES (%s)", (filename,))
-                    
-                    conn.commit()
-                    cur.close()
-                    conn.close()
-                    
-                    gr.Info('Files archived successfully!')
+                        gr.Info('Files archived successfully!')
 
-                archive_btn = gr.Button('Archive Files')
-                archive_btn.click(
-                    fn=archive_files,
-                    inputs=[files_to_archive],
-                    outputs=None
-                )
+                    archive_btn = gr.Button('Archive Files')
+                    archive_btn.click(
+                        fn=archive_files,
+                        inputs=[files_to_archive],
+                        outputs=None
+                    )
 
-                
+
 
             dashboard = gr.Dataframe(
                 headers=['JSON File Name' ,'Total Records','Completed','Skipped','Create WIP','Create YTS','Review YTS','Review WIP'],
                 datatype=["str", "number", 'number', 'number', 'number', 'number', 'number', 'number'],
-                row_count=4,
+                row_count=12,
                 col_count=(8, "fixed"),
                 interactive=False,
                 value=initialize_dashboard
@@ -2375,10 +2550,10 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d],
                     outputs=dashboard
             )
-            
 
 
-        with gr.Tab('Admin', visible=False, id=10) as admin:
+
+        with gr.Tab('Admin Panel', visible=False, id=10) as admin:
             with gr.Row(equal_height=True):
                 with gr.Accordion(" Add New User or Change Credentials", open=False):
                   with gr.Row():
@@ -2447,7 +2622,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             with gr.Column():
                 with gr.Row():
                     files_to_export = gr.Dropdown(choices = [], multiselect=True, label='Files to Export')
-                tabs.change(
+                curr_username.change(
                     fn=fetch_filenames,
                     inputs=None,
                     outputs=files_to_export
@@ -2532,7 +2707,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
             def validate_scores(s1,s2,s3):
                 if s1 is not None and s2 is not None and s3 is not None and int(s1) > 0 and int(s2) >0 and int(s3) >0:
-            
+
                     return gr.Button(interactive=True)
                 return gr.Button(interactive=False)
             l_user.change(validate, inputs=[l_user, l_pass, l_task], outputs=[l_submit])
@@ -2550,7 +2725,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 return gr.Tabs(visible=False),gr.Tabs(visible=False), gr.Tabs(selected=1)
             curr_username.change(show_admin, curr_username, outputs=[admin, p_summary_tab, tabs])
             curr_username.change(show_admin, curr_username, outputs=[dashboard_tab, p_report_tab, tabs])
-            
+
             def update_files(username, user_task):
                 if username is None:
                     return gr.Dropdown( choices=['No files available'])
@@ -2565,7 +2740,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             q = load_question(username.lower(), curr_user_task.lower(), file_selection)
 
             return gr.Tabs(selected=2), q
-        with gr.Tab("Selection", id=1) as selection_tab:
+        with gr.Tab("Selection", id=1, visible=False) as selection_tab:
           with gr.Row(equal_height=True):
             with gr.Column(scale=1):
               x = gr.Markdown(' ')
@@ -2586,21 +2761,21 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             )
             tabs.change(
                 fn=update_prompt_counts,
-                inputs=[file_selection, curr_user_task, user_task],
+                inputs=[curr_username, file_selection, curr_user_task, user_task],
                 outputs=markdown_display
             )
 
             def change_tab(id):
                 id = int(id)
                 if id == 1:
-                    return gr.Tabs(selected=id), gr.Tabs(visible=True), gr.Tabs(visible=True), gr.Tabs(visible=True)
+                    return gr.Tabs(selected=id), gr.Tabs(visible=False), gr.Tabs(visible=True), gr.Tabs(visible=True)
                 elif id ==2:
-                    return gr.Tabs(selected=id), gr.Tabs(visible=True), gr.Tabs(visible=True), gr.Tabs(visible=True)
+                    return gr.Tabs(selected=id), gr.Tabs(visible=False), gr.Tabs(visible=False), gr.Tabs(visible=True)
             curr_user_task.change(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
             curr_username.change(show_admin, curr_username, outputs=[admin, p_summary_tab, tabs])
             curr_username.change(show_admin, curr_username, outputs=[dashboard_tab, p_report_tab, tabs])
-            
+
             files.upload(update_files, inputs=[curr_username, curr_user_task], outputs=[file_selection])
 
         with gr.Tab('Release WIP', visible=False) as release_wip_tab:
@@ -2620,12 +2795,12 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     return gr.Dropdown(choices=unique_usernames, label='Username', multiselect=True, interactive=True)
 
 
-                    
+
             with gr.Row():
                 file_info_d = gr.Dataframe(
                     headers=['ID','JSON Filename','User Name','Task','Status','Start Datetime','End Datetime','Skip Category','Reason for Skip'],
                     datatype=["str", "str", "str", 'str', 'str', 'str', 'date', 'date', 'str'],
-                    row_count=4,
+                    row_count=12,
                     col_count=(9, "fixed"),
                     interactive=False,
                     visible=True,
@@ -2651,19 +2826,20 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         with conn.cursor() as cur:
                             # Construct the SQL query with IN operator
                             query = "UPDATE prompts SET status = 'yts' WHERE id IN %s"
-                            
+
                             # Execute the query with the id_list as a tuple
+                            id_list = [str(x) for x in id_list]
                             cur.execute(query, (tuple(id_list),))
-                            
+
                             # Commit the transaction
                             conn.commit()
                             gr.Info(f"Marked ID - { ','.join(id_list)} as YTS")
-                            
+
                     except Exception as e:
                         print(f"Error: {e}")
                         gr.Error(f'Error while moving - {e}')
                         conn.rollback()  # Rollback the transaction in case of error
-                    
+
                     finally:
                         # Close cursor and connection
                         cur.close()
@@ -2922,7 +3098,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         skip.click(skip_and_next, inputs=[n_clicks, response_skip_reason, curr_prompt, id_1_j1, id_2_j1 ,id_1_j2, id_2_j2 ,id_1_j3, id_2_j3 , curr_username, curr_user_task,file_selection, response_1_id, response_2_id, response_3_id, skip_cat], outputs=[tabs, login_tab, selection_tab, subtask1, judgement_1, judgement_2, judgement_3, curr_prompt, n_clicks])
                         curr_prompt.change(
                             fn=update_prompt_counts,
-                            inputs=[file_selection, curr_user_task, user_task],
+                            inputs=[curr_username , file_selection, curr_user_task, user_task],
                             outputs=markdown_display
                         )
 
@@ -2992,6 +3168,17 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         skip_cat.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
                         create_skip_reason.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
                         tabs.change(validate_scores, inputs=[score_1, score_2, score_3], outputs=[next_button])
+                        def hide_login(curr_username):
+                            if curr_username == 'admin':
+                                return gr.Tab(visible=False), gr.Tab(visible=False), gr.Tab(visible=False)
+                            return gr.Tab(visible=False), gr.Tab(visible=True), gr.Tab(visible=True)
+                        
+                        def hide_markdown(curr_username):
+                            if curr_username == 'admin':
+                                return gr.Markdown(visible=False), gr.Markdown(visible=False)
+                            return gr.Markdown(visible=True), gr.Markdown(visible=True)
+                        curr_username.change(hide_markdown, curr_username, [markdown_display, user_info_display])
+                        curr_username.change(hide_login, curr_username, [login_tab, selection_tab, subtask1])
 
 gr.close_all()
 app.launch(debug=True, server_name='0.0.0.0', share=True)
