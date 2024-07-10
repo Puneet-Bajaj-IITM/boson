@@ -3177,8 +3177,8 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             if curr_username == 'admin':
                                 return gr.Markdown(visible=False), gr.Markdown(visible=False)
                             return gr.Markdown(visible=True), gr.Markdown(visible=True)
-                        curr_username.change(hide_markdown, curr_username, [markdown_display, user_info_display])
-                        curr_username.change(hide_login, curr_username, [login_tab, selection_tab, subtask1])
+                        tabs.change(hide_markdown, curr_username, [markdown_display, user_info_display])
+                        tabs.change(hide_login, curr_username, [login_tab, selection_tab, subtask1])
 
 gr.close_all()
 app.launch(debug=True, server_name='0.0.0.0', share=True)
