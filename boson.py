@@ -10,39 +10,6 @@ def get_db_connection():
         host="localhost"
     )
 
-import psycopg2
-
-# Connect to your PostgreSQL database
-conn = get_db_connection()
-
-# Create a cursor object
-cur = conn.cursor()
-
-
-# Retrieve all functions and procedures created by the specific user
-cur.execute(f"""
-    SELECT routine_type, routine_schema, routine_name 
-    FROM information_schema.routines
-    WHERE routine_type IN ('FUNCTION', 'PROCEDURE')
-    AND specific_schema NOT IN ('pg_catalog', 'information_schema')
-""")
-routines = cur.fetchall()
-
-# Drop each function and procedure
-for routine_type, routine_schema, routine_name in routines:
-    drop_statement = f'DROP {routine_type} {routine_schema}.{routine_name} CASCADE;'
-    try:
-        cur.execute(drop_statement)
-        print(f"Successfully dropped {routine_type.lower()} {routine_schema}.{routine_name}")
-    except Exception as e:
-        print(f"Failed to drop {routine_type.lower()} {routine_schema}.{routine_name}: {e}")
-
-# Commit the transaction
-conn.commit()
-
-# Close the cursor and connection
-cur.close()
-conn.close()
 
 
 def setup_database():
@@ -251,7 +218,7 @@ def get_project_summary(from_day, from_month, from_year, to_day, to_month, to_ye
     total_prompts = {category: 0 for category in categories}
 
     s = 0
-    for row in result: 
+    for row in result:
         category, count = row
         if category in total_prompts:
             s += count
@@ -309,7 +276,7 @@ def initialize_p_summary():
     total_prompts = {category: 0 for category in categories}
 
     s = 0
-    for row in result: 
+    for row in result:
         category, count = row
         if category in total_prompts:
             s += count
@@ -1631,8 +1598,8 @@ def fetch_filenames():
     filenames = cur.fetchall()
     cur.close()
     conn.close()
-    if not filenames:
-        gr.Warning('No File Labelled till now!')
+    # if not filenames:
+    #     gr.Warning('No File Labelled till now!')
     return gr.Dropdown(choices = [filename[0] for filename in filenames], multiselect=True, label='Files to Export')
 
 
@@ -2344,7 +2311,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
             markdown_text = f"Total Records: {total_count}, Completed: {done}, Skipped: {skipped}, Create WIP: {create_WIP}, Create YTS: {YTS}, Review YTS - {review_YTS}, Review WIP - {review_WIP} "
         else:
             markdown_text = None
-        
+
         if curr_username == 'admin':
             return gr.Markdown(value=None, visible=False)
         return gr.Markdown(value=markdown_text, visible=True)
@@ -2472,7 +2439,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     to_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
                     from_month_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
                     from_year_d.change(show_filter, inputs=[from_day_d, from_month_d, from_year_d, to_day_d, to_month_d, to_year_d], outputs=filter_btn_d)
-
+            with gr.Accordion("Archive Files", open=False):
                 with gr.Row():
                     def get_files_to_archive():
                         try:
@@ -3172,7 +3139,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             if curr_username == 'admin':
                                 return gr.Tab(visible=False), gr.Tab(visible=False), gr.Tab(visible=False)
                             return gr.Tab(visible=False), gr.Tab(visible=True), gr.Tab(visible=True)
-                        
+
                         def hide_markdown(curr_username):
                             if curr_username == 'admin':
                                 return gr.Markdown(visible=False), gr.Markdown(visible=False)
