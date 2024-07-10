@@ -167,14 +167,6 @@ from pickle import NONE
 import psycopg2
 from psycopg2 import sql
 
-def get_db_connection():
-    return psycopg2.connect(
-        dbname="boson",
-        user="ubuntu",
-        password="Ddd@1234",  # Replace with your password
-        host="localhost"
-    )
-
 def get_project_summary(from_day, from_month, from_year, to_day, to_month, to_year):
     # Define the date range
     from_date = f"{from_year}-{from_month}-{from_day}"
