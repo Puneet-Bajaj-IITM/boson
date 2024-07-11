@@ -359,10 +359,10 @@ def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
             for row in results:
                 data.append({
                     'User Name': row[0],
-                    'Completed Date': row[1],
-                    'Status': row[2],
+                    'Completed Date': row[1],                  
                     'JSON File Name': row[3],
                     'Task': row[4],
+                    'Status': row[2],
                     'Rating Average': row[5],
                     'Total Record Skipped': row[6],
                     'Total Record Completed': row[7],
@@ -391,7 +391,7 @@ import psycopg2
 import pandas as pd
 
 def initialize_pro_report():
-    df = pd.DataFrame(columns=['User Name', 'Completed Date', "Status", 'JSON File Name', 'Task',
+    df = pd.DataFrame(columns=['User Name', 'Completed Date', 'JSON File Name', 'Task', "Status",
                                'Rating Average', 'Total Record Skipped', 'Total Record Completed',
                                'Duration (Min)'])
 
@@ -407,7 +407,7 @@ def initialize_pro_report():
 
         if result:
             # Convert result to DataFrame
-            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'Status', 'JSON File Name', 'Task',
+            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'JSON File Name', 'Task', 'Status',
                                                'Rating Average', 'Total Record Skipped', 'Total Record Completed',
                                                'Duration (Min)'])
 
@@ -2359,7 +2359,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     from_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
 
             pro_report = gr.Dataframe(
-                headers=['User Name','Completed Date','Status', 'JSON File Name','Task','Rating Average','Total Record Skipped','Total Record Completed', 'Duration (Min)'],
+                headers=['User Name','Completed Date','JSON File Name','Task','Status', 'Rating Average','Total Record Skipped','Total Record Completed', 'Duration (Min)'],
                 datatype=["str", "date",'str', 'str', 'str', 'number', 'number', 'number', 'number'],
                 row_count=12,
                 col_count=(9, "fixed"),
