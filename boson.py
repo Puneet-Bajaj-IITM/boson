@@ -2902,14 +2902,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                 with gr.Column(scale=12):
                     with gr.Row():
+                        rubric_1_j1 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_1_1_rubric'])
+                            
                         with gr.Column():
                             id_1_j1 = gr.Textbox(label="ID 1",autoscroll=False, max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_1_1_id'])
-                            rubric_1_j1 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_1_1_rubric'])
                             score_1_j1 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_1_1_score'])
                             reason_1_j1 = gr.Textbox(label="Reason 1", autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_1_1_reason'])
                         with gr.Column():
                             id_2_j1 = gr.Textbox(label="ID 2",autoscroll=False, max_lines=2, lines=2, visible=False, value=curr_prompt.value['judgement_1_2_id'])
-                            rubric_2_j1 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1,interactive=False, value=curr_prompt.value['judgement_1_2_rubric'])
                             score_2_j1 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_1_2_score'])
                             reason_2_j1 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_1_2_reason'])
 
@@ -2945,14 +2945,13 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                 with gr.Column(scale=12):
                     with gr.Row():
+                        rubric_1_j2 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_1_rubric'])
                         with gr.Column():
-                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_2_1_id'])
-                            rubric_1_j2 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_1_rubric'])
+                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_2_1_id'])                    
                             score_1_j2 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_2_1_score'])
                             reason_1_j2 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_2_1_reason'])
                         with gr.Column():
                             id_2_j2 = gr.Textbox(label="ID 2", max_lines=2, lines=2,autoscroll=False, visible=False, value=curr_prompt.value['judgement_2_2_id'])
-                            rubric_2_j2 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_2_rubric'])
                             score_2_j2 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_2_2_score'])
                             reason_2_j2 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_2_2_reason'])
 
@@ -2991,14 +2990,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                 with gr.Column(scale=12):
                     with gr.Row():
+                        rubric_1_j3 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_3_1_rubric'])
+                            
                         with gr.Column():
                             id_1_j3 = gr.Textbox(label="ID 1", max_lines=2, lines=2,autoscroll=False, visible=False, value=curr_prompt.value['judgement_3_1_id'])
-                            rubric_1_j3 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_3_1_rubric'])
                             score_1_j3 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_3_1_score'])
                             reason_1_j3 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_3_1_reason'])
                         with gr.Column():
                             id_2_j3 = gr.Textbox(label="ID 2", max_lines=2, lines=2, autoscroll=False, visible=False, value=curr_prompt.value['judgement_3_2_id'])
-                            rubric_2_j3 = gr.Textbox(label="Rubric 2",autoscroll=False, max_lines=1, lines=1, interactive=False, value=curr_prompt.value['judgement_3_2_rubric'])
                             score_2_j3 = gr.Radio(label="Score 2", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_3_2_score'])
                             reason_2_j3 = gr.Textbox(label="Reason 2",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_3_2_reason'])
                         def sync_values(question, response_1, response_2, response_3):
