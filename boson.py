@@ -359,7 +359,7 @@ def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
             for row in results:
                 data.append({
                     'User Name': row[0],
-                    'Completed Date': row[1],                  
+                    'Completed Date': row[1],
                     'JSON File Name': row[3],
                     'Task': row[4],
                     'Status': row[2],
@@ -1893,7 +1893,7 @@ BEGIN
         COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
         SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
         COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        ROUND(EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time) / 60.0, 3)
+        ROUND(EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0, 2)
     FROM prompts p
     JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
@@ -1916,7 +1916,7 @@ BEGIN
         COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
         SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
         COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        ROUND(EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)/ 60.0, 3)
+        ROUND(EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0, 2)
     FROM prompts p
     JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
@@ -2818,7 +2818,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     inputs = [ id_for_info_d ],
                     outputs = release_for_info_d
                 )
-                
+
                 release_for_info_d.click(
                     fn=mark_yts,
                     inputs=[id_for_info_d],
@@ -2932,7 +2932,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     rubric_1_j1 = gr.Textbox(label="Rubric",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_1_1_rubric'])
                     rubric_2_j1 = gr.Textbox(visible=False)
                     with gr.Row():
-                       
+
                         with gr.Column():
                             id_1_j1 = gr.Textbox(label="ID 1",autoscroll=False, max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_1_1_id'])
                             score_1_j1 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_1_1_score'])
@@ -2971,7 +2971,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             skip_cat_j2 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
                             skip_reason_j2 = gr.Textbox(label = 'Reason' ,value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] , autoscroll=False, interactive=True)
                             skip_cat_j2.change(show, skip_cat_j2, [skip_button_j2, next_button_j2, clear_btn_2])
-                           
+
                             skip_reason_j2.change(
                                 fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
                                 inputs=[skip_reason_j2],
@@ -2982,9 +2982,9 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     rubric_1_j2 = gr.Textbox(label="Rubric",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_1_rubric'])
                     rubric_2_j2 = gr.Textbox(visible=False)
                     with gr.Row():
-                        
+
                         with gr.Column():
-                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_2_1_id'])                    
+                            id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_2_1_id'])
                             score_1_j2 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_2_1_score'])
                             reason_1_j2 = gr.Textbox(label="Reason 1",autoscroll=False, max_lines=13, lines=13, value=curr_prompt.value['judgement_2_1_reason'])
                         with gr.Column():
@@ -3034,7 +3034,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     rubric_1_j3 = gr.Textbox(label="Rubric",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_3_1_rubric'])
                     rubric_2_j3 = gr.Textbox(visible=False)
                     with gr.Row():
-                        
+
                         with gr.Column():
                             id_1_j3 = gr.Textbox(label="ID 1", max_lines=2, lines=2,autoscroll=False, visible=False, value=curr_prompt.value['judgement_3_1_id'])
                             score_1_j3 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_3_1_score'])
