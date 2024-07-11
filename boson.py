@@ -406,10 +406,18 @@ def initialize_pro_report():
         result = cur.fetchall()
 
         if result:
-            # Convert result to DataFrame
-            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'JSON File Name', 'Task', 'Status',
-                                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
-                                               'Duration (Min)'])
+            # Assuming 'result' contains your data
+            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'Status', 'JSON File Name', 'Task',
+                                              'Rating Average', 'Total Record Skipped', 'Total Record Completed',
+                                              'Duration (Min)'])
+
+            # Reordering columns
+            df = df[['User Name', 'Completed Date', 'Task', 'Status', 'JSON File Name',
+                    'Rating Average', 'Total Record Skipped', 'Total Record Completed',
+                    'Duration (Min)']]
+
+            # Now 'Status' column is moved after 'Task'
+
 
     except Exception as e:
         print(f"Error connecting to PostgreSQL database: {e}")
@@ -2917,13 +2925,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             skip_reason_j1.change(
                                 fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
                                 inputs=[skip_reason_j1],
-                                outputs=[skip_cat_j1]
+                                outputs=[skip_button_j1]
                             )
 
                 with gr.Column(scale=12):
+                    rubric_1_j1 = gr.Textbox(label="Rubric",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_1_1_rubric'])
+                    rubric_2_j1 = gr.Textbox(visible=False)
                     with gr.Row():
-                        rubric_1_j1 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_1_1_rubric'])
-                            
+                       
                         with gr.Column():
                             id_1_j1 = gr.Textbox(label="ID 1",autoscroll=False, max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_1_1_id'])
                             score_1_j1 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_1_1_score'])
@@ -2966,12 +2975,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             skip_reason_j2.change(
                                 fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
                                 inputs=[skip_reason_j2],
-                                outputs=[skip_cat_j2]
+                                outputs=[skip_button_j2]
                             )
 
                 with gr.Column(scale=12):
+                    rubric_1_j2 = gr.Textbox(label="Rubric",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_1_rubric'])
+                    rubric_2_j2 = gr.Textbox(visible=False)
                     with gr.Row():
-                        rubric_1_j2 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_2_1_rubric'])
+                        
                         with gr.Column():
                             id_1_j2 = gr.Textbox(label="ID 1", autoscroll=False,max_lines=2,lines=2, visible=False, value=curr_prompt.value['judgement_2_1_id'])                    
                             score_1_j2 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_2_1_score'])
@@ -3016,13 +3027,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             skip_reason_j3.change(
                                 fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
                                 inputs=[skip_reason_j3],
-                                outputs=[skip_cat_j3]
+                                outputs=[skip_button_j3]
                             )
 
                 with gr.Column(scale=12):
+                    rubric_1_j3 = gr.Textbox(label="Rubric",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_3_1_rubric'])
+                    rubric_2_j3 = gr.Textbox(visible=False)
                     with gr.Row():
-                        rubric_1_j3 = gr.Textbox(label="Rubric 1",autoscroll=False, max_lines=1,lines=1, interactive=False, value=curr_prompt.value['judgement_3_1_rubric'])
-                            
+                        
                         with gr.Column():
                             id_1_j3 = gr.Textbox(label="ID 1", max_lines=2, lines=2,autoscroll=False, visible=False, value=curr_prompt.value['judgement_3_1_id'])
                             score_1_j3 = gr.Radio(label="Score 1", choices=[1, 2, 3, 4, 5], value=curr_prompt.value['judgement_3_1_score'])
