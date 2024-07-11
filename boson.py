@@ -2914,6 +2914,11 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                             skip_cat_j1 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
                             skip_reason_j1 = gr.Textbox(label = 'Reason',autoscroll=False, value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] , interactive=True)
                             skip_cat_j1.change(show, skip_cat_j1, [skip_button_j1, next_button_j1, clear_btn_1])
+                            skip_reason_j1.change(
+                                fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
+                                inputs=[skip_reason_j1],
+                                outputs=[skip_cat_j1]
+                            )
 
                 with gr.Column(scale=12):
                     with gr.Row():
