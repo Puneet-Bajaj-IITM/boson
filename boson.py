@@ -2309,13 +2309,13 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
         return gr.Markdown(value=markdown_text, visible=True)
 
     # Initial user information (for demonstration purposes)
-    initial_username = "JohnDoe"
-    initial_task_name = "Review Task"
-    initial_filename = "sample_file.jsonl"
+    initial_username = ""
+    initial_task_name = ""
+    initial_filename = ""
     create_skip_reason = gr.Textbox(label='Reason', value=None, interactive=True, visible=False)
     review_skip_reason = gr.Textbox(label='Reason', value=None, interactive=True, visible=False)
-    create_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], visible=False)
-    review_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], visible=False)
+    create_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], visible=False)
+    review_skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], visible=False)
 
     # Create Gradio components
     with gr.Row(equal_height=True):
@@ -2747,6 +2747,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                 )
                 username_for_info_d = gr.Dropdown(choices=[], interactive=False, multiselect=True, label='Username')
                 id_for_info_d = gr.Dropdown(label='ID', multiselect=True, interactive=False, choices=[])
+                release_for_info_d = gr.Button('Release', interactive=False)
 
                 def get_usernames_for_info_d(files, df):
                     filtered_df = df[df['JSON Filename'].isin(files)]
@@ -2805,6 +2806,12 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         conn.close()
 
                 id_for_info_d.change(
+                    fn = lambda x: gr.Button(interactive=True) if x is not None else gr.Button(interactive=False),
+                    inputs = [ id_for_info_d ],
+                    outputs = release_for_info_d
+                )
+                
+                release_for_info_d.click(
                     fn=mark_yts,
                     inputs=[id_for_info_d],
                     outputs=[]
@@ -2836,16 +2843,24 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         )
                         with gr.Accordion("Skip", open=False) as acc_0:
                             skip = gr.Button('Skip', interactive=False)
-                            skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            skip_cat = gr.Dropdown(label= 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
                             response_skip_reason = gr.Textbox(label='Reason', value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] ,autoscroll=False, interactive=True)
 
                         def show(value):
-                            if value is not None and value != '' and value != 'Clear Skip':
+                            if value is not None and value != '' and value != 'Clear Skip' and value != 'Others':
                                 return gr.Button(interactive=True), gr.Button(interactive=False), gr.Button(interactive=False)
+                            elif value == 'Others':
+                                return gr.Button(interactive=False), gr.Button(interactive=False), gr.Button(interactive=False)
                             return gr.Button(interactive=False),  gr.Button(interactive=True), gr.Button(interactive=True)
                         skip_cat.change(show, skip_cat, [skip, next_button, prev_button])
+                        response_skip_reason.change(
+                            fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
+                            inputs=[response_skip_reason],
+                            outputs=[skip]
+                        )
+
                         def reset_acc(curr_prompt):
-                            return gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat'])
+                            return gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Accordion(open=False), gr.Button(interactive=False), gr.Button(interactive=False),gr.Button(interactive=False),gr.Button(interactive=False), gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Textbox(value=None),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']),  gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt['review_skip_cat'] or curr_prompt['create_skip_cat'])
 
 
                 with gr.Column():
@@ -2896,7 +2911,7 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                         next_button_j1 = gr.Button("Next")
                         with gr.Accordion("Skip", open=False) as acc_1:
                             skip_button_j1 = gr.Button('Skip', interactive=False)
-                            skip_cat_j1 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            skip_cat_j1 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
                             skip_reason_j1 = gr.Textbox(label = 'Reason',autoscroll=False, value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] , interactive=True)
                             skip_cat_j1.change(show, skip_cat_j1, [skip_button_j1, next_button_j1, clear_btn_1])
 
@@ -2939,9 +2954,15 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         with gr.Accordion("Skip", open=False) as acc_2:
                             skip_button_j2 = gr.Button('Skip', interactive=False)
-                            skip_cat_j2 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            skip_cat_j2 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
                             skip_reason_j2 = gr.Textbox(label = 'Reason' ,value =  curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] , autoscroll=False, interactive=True)
                             skip_cat_j2.change(show, skip_cat_j2, [skip_button_j2, next_button_j2, clear_btn_2])
+                           
+                            skip_reason_j2.change(
+                                fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
+                                inputs=[skip_reason_j2],
+                                outputs=[skip_cat_j2]
+                            )
 
                 with gr.Column(scale=12):
                     with gr.Row():
@@ -2984,9 +3005,14 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         with gr.Accordion("Skip", open=False) as acc_3:
                             skip_button_j3 = gr.Button('Skip', interactive=False)
-                            skip_cat_j3 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                            skip_cat_j3 = gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
                             skip_reason_j3 = gr.Textbox(label = 'Reason', value = curr_prompt.value['review_skip_reason'] or curr_prompt.value['create_skip_reason'] ,autoscroll=False, interactive=True)
                             skip_cat_j3.change(show, skip_cat_j3, [skip_button_j3, next_button_j3, clear_btn_3])
+                            skip_reason_j3.change(
+                                fn = lambda x: gr.Button(interactive=True) if x is not None and x != '' else gr.Button(interactive=False),
+                                inputs=[skip_reason_j3],
+                                outputs=[skip_cat_j3]
+                            )
 
                 with gr.Column(scale=12):
                     with gr.Row():
@@ -3120,8 +3146,8 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
 
                         def clear_cat(user_task):
                             if user_task.lower() == 'review':
-                                return gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= None)
-                            return gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
+                                return gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= None), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= None)
+                            return gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat']), gr.Dropdown(label = 'Skip Category', choices = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Clear Skip', 'Others'], value= curr_prompt.value['review_skip_cat'] or curr_prompt.value['create_skip_cat'])
                         tabs.change(clear_cat, inputs=user_task, outputs=[skip_cat_j1, skip_cat_j2, skip_cat_j3, skip_cat ])
                         skip_cat.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
                         create_skip_reason.change(show_reason, inputs=[create_skip_reason, review_skip_reason, skip_cat, review_skip_cat , curr_user_task, curr_prompt], outputs=[res_skip_j1 , res_skip_j2,res_skip , res_skip_j3 ])
