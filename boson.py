@@ -1893,7 +1893,7 @@ BEGIN
         COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
         SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
         COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        ROUND(EXTRACT(EPOCH FROM CAST((p.create_end_time - p.create_start_time)), AS NUMERIC )/ 60.0, 3)
+        ROUND(EXTRACT(EPOCH FROM CAST((p.create_end_time - p.create_start_time), AS NUMERIC ) / 60.0, 3)
     FROM prompts p
     JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
