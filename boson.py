@@ -22,6 +22,8 @@ def get_db_connection():
 
 
 
+
+
 def setup_database():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1718,7 +1720,7 @@ def organize_data(rows, expected_fields):
             data[line_id]["responses"].append(response_text)
             data[line_id]["scores"].append(response_score)
 
-    return data if len(data.keys()) == expected_fields else None
+    return data #if len(data.keys()) == expected_fields else None
 
 def write_to_jsonl(filename, data):
     with open(f"{filename}", "w") as f:
