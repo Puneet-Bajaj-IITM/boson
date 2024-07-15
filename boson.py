@@ -2,41 +2,29 @@
 import psycopg2
 from psycopg2 import sql
 
+# Cloud
 def get_db_connection():
     return psycopg2.connect(
         dbname="boson",
-        user="postgres",
-        password="Ddd@1234",  # Replace with your password
+        user="ubuntu",
+        password="Ddd@1234",  
         host="localhost"
     )
+
+# NBO
+# def get_db_connection():
+#     return psycopg2.connect(
+#         dbname="boson",
+#         user="postgres",
+#         password="Ddd@1234",  
+#         host="localhost"
+#     )
 
 
 
 def setup_database():
     conn = get_db_connection()
     cur = conn.cursor()
-
-    # Drop existing tables
-    # cur.execute("""
-    #     DO $$ DECLARE
-    #         r RECORD;
-    #     BEGIN
-    #         FOR r IN (SELECT tablename FROM pg_tables WHERE schemaname = current_schema()) LOOP
-    #             EXECUTE 'DROP TABLE IF EXISTS ' || quote_ident(r.tablename) || ' CASCADE';
-    #         END LOOP;
-    #     END $$;
-    # """)
-
-    # # Drop existing functions
-    # cur.execute("""
-    #     DO $$ DECLARE
-    #         r RECORD;
-    #     BEGIN
-    #         FOR r IN (SELECT routine_name FROM information_schema.routines WHERE routine_type='FUNCTION' AND specific_schema = current_schema()) LOOP
-    #             EXECUTE 'DROP FUNCTION IF EXISTS ' || quote_ident(r.routine_name) || ' CASCADE';
-    #         END LOOP;
-    #     END $$;
-    # """)
 
     # Create users table
     cur.execute("""
@@ -206,7 +194,7 @@ def get_project_summary(from_day, from_month, from_year, to_day, to_month, to_ye
         return pd.DataFrame({'Skip Category': [], 'Total Prompts': []})
 
     # Prepare the data for the DataFrame
-    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'No Skip']
+    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Others', 'No Skip']
     total_prompts = {category: 0 for category in categories}
 
     s = 0
@@ -264,7 +252,7 @@ def initialize_p_summary():
         return pd.DataFrame({'Skip Category': [], 'Total Prompts': []})
 
     # Prepare the data for the DataFrame
-    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'No Skip']
+    categories = ['NFSW', 'Lack of Knowledge', 'Bad Data', 'Others','No Skip']
     total_prompts = {category: 0 for category in categories}
 
     s = 0
@@ -359,14 +347,12 @@ def get_pro_report(from_day, from_month, from_year, to_day, to_month, to_year):
             for row in results:
                 data.append({
                     'User Name': row[0],
-                    'Completed Date': row[1],
-                    'JSON File Name': row[3],
-                    'Task': row[4],
-                    'Status': row[2],
+                    'Date Range': row[1],
+                    'Task': row[2],
+                    'Prompts Completed': row[3],
+                    'Prompts Skipped': row[4],
                     'Rating Average': row[5],
-                    'Total Record Skipped': row[6],
-                    'Total Record Completed': row[7],
-                    'Duration (Min)': row[8]
+                    'Duration (Min)': row[6]
                 })
 
     except Exception as e:
@@ -391,9 +377,7 @@ import psycopg2
 import pandas as pd
 
 def initialize_pro_report():
-    df = pd.DataFrame(columns=['User Name', 'Completed Date', 'JSON File Name', 'Task', "Status",
-                               'Rating Average', 'Total Record Skipped', 'Total Record Completed',
-                               'Duration (Min)'])
+    df = pd.DataFrame(columns=['User Name','Date Range','Task', 'Prompts Completed','Prompts Skipped','Rating Average','Duration (Min)'])
 
     try:
         conn = get_db_connection()
@@ -407,14 +391,10 @@ def initialize_pro_report():
 
         if result:
             # Assuming 'result' contains your data
-            df = pd.DataFrame(result, columns=['User Name', 'Completed Date', 'Status', 'JSON File Name', 'Task',
-                                              'Rating Average', 'Total Record Skipped', 'Total Record Completed',
-                                              'Duration (Min)'])
+            df = pd.DataFrame(result, columns=['User Name','Date Range','Task','Prompts Completed','Prompts Skipped','Rating Average','Duration (Min)'])
 
             # Reordering columns
-            df = df[['User Name', 'Completed Date', 'Task', 'Status', 'JSON File Name',
-                    'Rating Average', 'Total Record Skipped', 'Total Record Completed',
-                    'Duration (Min)']]
+            df = df[['User Name','Date Range','Task', 'Prompts Completed','Prompts Skipped','Rating Average','Duration (Min)']]
 
             # Now 'Status' column is moved after 'Task'
 
@@ -1577,7 +1557,6 @@ import os
 import json
 import psycopg2
 
-
 def fetch_filenames():
     conn = get_db_connection()
     cur = conn.cursor()
@@ -1586,13 +1565,7 @@ def fetch_filenames():
         SELECT f.filename
         FROM files f
         LEFT JOIN prompts p ON f.id = p.file_id
-        GROUP BY f.filename
-        HAVING COUNT(*) = SUM(CASE
-                                WHEN p.phase IN ('create', 'review')
-                                    AND (p.status = 'done' OR (p.status = 'skip' AND p.phase = 'review'))
-                                THEN 1
-                                ELSE 0
-                              END);
+        GROUP BY f.filename;
 
     """)
     filenames = cur.fetchall()
@@ -1601,6 +1574,32 @@ def fetch_filenames():
     # if not filenames:
     #     gr.Warning('No File Labelled till now!')
     return gr.Dropdown(choices = [filename[0] for filename in filenames], multiselect=True, label='Files to Export')
+
+
+
+# def fetch_filenames():
+#     conn = get_db_connection()
+#     cur = conn.cursor()
+
+#     cur.execute("""
+#         SELECT f.filename
+#         FROM files f
+#         LEFT JOIN prompts p ON f.id = p.file_id
+#         GROUP BY f.filename
+#         HAVING COUNT(*) = SUM(CASE
+#                                 WHEN p.phase IN ('create', 'review')
+#                                     AND (p.status = 'done' OR (p.status = 'skip' AND p.phase = 'review'))
+#                                 THEN 1
+#                                 ELSE 0
+#                               END);
+
+#     """)
+#     filenames = cur.fetchall()
+#     cur.close()
+#     conn.close()
+#     # if not filenames:
+#     #     gr.Warning('No File Labelled till now!')
+#     return gr.Dropdown(choices = [filename[0] for filename in filenames], multiselect=True, label='Files to Export')
 
 
 def fetch_expected_fields(cur, filename):
@@ -1870,13 +1869,11 @@ CREATE OR REPLACE FUNCTION get_pro_report(
 )
 RETURNS TABLE (
     user_name VARCHAR(50),
-    completed_date TIMESTAMP,
-    status VARCHAR(5),
-    json_file_name VARCHAR(255),
+    date_range TEXT,
     task VARCHAR(10),
-    rating_average NUMERIC,
     total_record_skipped BIGINT,
     total_record_completed BIGINT,
+    rating_average NUMERIC,
     duration_min NUMERIC
 )
 LANGUAGE plpgsql
@@ -1885,17 +1882,14 @@ BEGIN
     -- Query for create phase
     RETURN QUERY
     SELECT
-        p.create_user,
-        p.create_end_time,
-        p.status::VARCHAR(5),
-        f.filename,
-        'create'::VARCHAR(10),
-        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
-        SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
-        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        ROUND(EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0, 2)
+        p.create_user AS user_name,
+        TO_CHAR(MIN(p.create_start_time), 'Mon DD, YYYY') || ' to ' || TO_CHAR(MAX(p.create_end_time), 'Mon DD, YYYY') AS date_range,
+        'create'::VARCHAR(10) AS task,
+        SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT AS total_record_skipped,
+        COUNT(p.id)::BIGINT AS total_record_completed,
+        ROUND(COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, 2) AS rating_average,
+        ROUND(CAST(EXTRACT(EPOCH FROM (MAX(p.create_end_time) - MIN(p.create_start_time))) / 60.0 AS NUMERIC), 2) AS duration_min
     FROM prompts p
-    JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
     LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
     WHERE p.phase = 'create'
@@ -1903,22 +1897,20 @@ BEGIN
         AND p.create_user <> ''
         AND p.create_start_time >= from_date
         AND p.create_end_time <= to_date
-    GROUP BY p.create_user, p.create_end_time, p.status, f.filename, p.create_start_time;
+        AND p.status IN ('done', 'skip')
+    GROUP BY p.create_user;
 
     -- Query for review phase
     RETURN QUERY
     SELECT
-        p.review_user,
-        p.review_end_time,
-        p.status::VARCHAR(5),
-        f.filename,
-        'review'::VARCHAR(10),
-        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
-        SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
-        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        ROUND(EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0, 2)
+        p.review_user AS user_name,
+        TO_CHAR(MIN(p.review_start_time), 'Mon DD, YYYY') || ' to ' || TO_CHAR(MAX(p.review_end_time), 'Mon DD, YYYY') AS date_range,
+        'review'::VARCHAR(10) AS task,
+        SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT AS total_record_skipped,
+        COUNT(p.id)::BIGINT AS total_record_completed,
+        ROUND(COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, 2) AS rating_average,
+        ROUND(CAST(EXTRACT(EPOCH FROM (MAX(p.review_end_time) - MIN(p.review_start_time))) / 60.0 AS NUMERIC), 2) AS duration_min
     FROM prompts p
-    JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
     LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
     WHERE p.phase = 'review'
@@ -1926,7 +1918,8 @@ BEGIN
         AND p.review_user <> ''
         AND p.review_start_time >= from_date
         AND p.review_end_time <= to_date
-    GROUP BY p.review_user, p.review_end_time,p.status, f.filename, p.review_start_time;
+        AND p.status IN ('done', 'skip')
+    GROUP BY p.review_user;
 END;
 $$;
 
@@ -1936,13 +1929,11 @@ initialize_pro_report_func = """
 CREATE OR REPLACE FUNCTION initialize_pro_report()
 RETURNS TABLE (
     user_name VARCHAR(50),
-    completed_date TIMESTAMP,
-    status VARCHAR(5),
-    json_file_name VARCHAR(255),
+    date_range TEXT,
     task VARCHAR(10),
-    rating_average NUMERIC,
     total_record_skipped BIGINT,
     total_record_completed BIGINT,
+    rating_average NUMERIC,
     duration_min NUMERIC
 )
 LANGUAGE plpgsql
@@ -1951,46 +1942,43 @@ BEGIN
     -- Query for create phase
     RETURN QUERY
     SELECT
-        p.create_user,
-        p.create_end_time,
-        p.status::VARCHAR(5),
-        f.filename,
-        'create'::VARCHAR(10),
-        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
-        SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
-        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        ROUND(EXTRACT(EPOCH FROM (p.create_end_time - p.create_start_time)) / 60.0, 2)
+        p.create_user AS user_name,
+        TO_CHAR(MIN(p.create_start_time), 'Mon DD, YYYY') || ' to ' || TO_CHAR(MAX(p.create_end_time), 'Mon DD, YYYY') AS date_range,
+        'create'::VARCHAR(10) AS task,
+        SUM(CASE WHEN p.create_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT AS total_record_skipped,
+        COUNT(p.id)::BIGINT AS total_record_completed,
+        ROUND(COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, 2) AS rating_average,
+        ROUND(CAST(EXTRACT(EPOCH FROM (MAX(p.create_end_time) - MIN(p.create_start_time))) / 60.0 AS NUMERIC), 2) AS duration_min
     FROM prompts p
-    JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
     LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
     WHERE p.phase = 'create'
         AND p.create_user IS NOT NULL
         AND p.create_user <> ''
-    GROUP BY p.create_user, p.create_end_time,p.status, f.filename, p.create_start_time;
+        AND p.status IN ('done', 'skip')
+    GROUP BY p.create_user;
 
     -- Query for review phase
     RETURN QUERY
     SELECT
-        p.review_user,
-        p.review_end_time,
-        p.status::VARCHAR(5),
-        f.filename,
-        'review'::VARCHAR(10),
-        COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, -- Ensure rating_average is NUMERIC
-        SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT,
-        COUNT(p.id)::BIGINT, -- Ensure total_record_completed is BIGINT
-        ROUND(EXTRACT(EPOCH FROM (p.review_end_time - p.review_start_time)) / 60.0, 2)
+        p.review_user AS user_name,
+        TO_CHAR(MIN(p.review_start_time), 'Mon DD, YYYY') || ' to ' || TO_CHAR(MAX(p.review_end_time), 'Mon DD, YYYY') AS date_range,
+        'review'::VARCHAR(10) AS task,
+        SUM(CASE WHEN p.review_skip_cat IS NOT NULL THEN 1 ELSE 0 END)::BIGINT AS total_record_skipped,
+        COUNT(p.id)::BIGINT AS total_record_completed,
+        ROUND(COALESCE(AVG(lr.score) + AVG(lj.score), 0.0)::NUMERIC, 2) AS rating_average,
+        ROUND(CAST(EXTRACT(EPOCH FROM (MAX(p.review_end_time) - MIN(p.review_start_time))) / 60.0 AS NUMERIC), 2) AS duration_min
     FROM prompts p
-    JOIN files f ON p.file_id = f.id
     LEFT JOIN labelled_responses lr ON p.id = lr.response_id
     LEFT JOIN labelled_judgements lj ON lr.response_id = lj.judgement_id
     WHERE p.phase = 'review'
         AND p.review_user IS NOT NULL
         AND p.review_user <> ''
-    GROUP BY p.review_user, p.review_end_time,p.status, f.filename, p.review_start_time;
+        AND p.status IN ('done', 'skip')
+    GROUP BY p.review_user;
 END;
 $$;
+
 
 
 """
@@ -2367,10 +2355,10 @@ with gr.Blocks(title='Boson - Task 1', css=css) as app:
                     from_year_pr.change(show_filter, inputs=[from_day_pr, from_month_pr, from_year_pr, to_day_pr, to_month_pr, to_year_pr], outputs=filter_btn_pr)
 
             pro_report = gr.Dataframe(
-                headers=['User Name','Completed Date','JSON File Name','Task','Status', 'Rating Average','Total Record Skipped','Total Record Completed', 'Duration (Min)'],
-                datatype=["str", "date",'str', 'str', 'str', 'number', 'number', 'number', 'number'],
+                headers=['User Name','Date Range','Task', 'Prompts Completed','Prompts Skipped','Rating Average','Duration (Min)'],
+                datatype=["str", "date",'str', 'number', 'number', 'number', 'number'],
                 row_count=12,
-                col_count=(9, "fixed"),
+                col_count=(7, "fixed"),
                 interactive=False,
                 value=initialize_pro_report
             )
