@@ -3,22 +3,22 @@ import psycopg2
 from psycopg2 import sql
 
 # Cloud
-def get_db_connection():
-    return psycopg2.connect(
-        dbname="boson",
-        user="ubuntu",
-        password="Ddd@1234",  
-        host="localhost"
-    )
-
-# NBO
 # def get_db_connection():
 #     return psycopg2.connect(
 #         dbname="boson",
-#         user="postgres",
+#         user="ubuntu",
 #         password="Ddd@1234",  
 #         host="localhost"
 #     )
+
+# NBO
+def get_db_connection():
+    return psycopg2.connect(
+        dbname="boson",
+        user="postgres",
+        password="Ddd@1234",  
+        host="localhost"
+    )
 
 
 
